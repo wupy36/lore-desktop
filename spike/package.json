@@ -1,0 +1,11 @@
+{
+  "name": "lore-desktop-spike",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@lore-vcs/sdk": "0.12.0"
+  },
+  "devDependencies": {
+    "electron": "33.2.1"
+  }
+}
