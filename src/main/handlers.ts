@@ -13,18 +13,32 @@ export interface HandlerDeps {
   bus: Bus;
   info: { backend: BackendKind; version: string; platform: string };
   openExternalDiff?: (input: In<"file:openExternalDiff">) => Promise<void>;
+  /** Native folder picker (Electron dialog); returns null when cancelled. */
+  pickDirectory?: () => Promise<string | null>;
+  /** Recent-repository persistence (Electron userData). */
+  recents?: { list(): string[]; remember(path: string): void };
 }
 
-export function createHandlers({ backend: b, runner, bus, info, openExternalDiff }: HandlerDeps): Handlers {
+export function createHandlers({ backend: b, runner, bus, info, openExternalDiff, pickDirectory, recents }: HandlerDeps): Handlers {
   const changed = (reason: string) => bus.emit("ws:changed", { reason });
   return {
     "app:info": async () => info,
     "repo:open": async ({ path }) => {
       const r = await b.openRepository(path);
+      recents?.remember(path);
       changed("open");
       return r;
     },
     "repo:current": async () => b.currentRepository(),
+    "repo:pick": async () => {
+      const path = pickDirectory ? await pickDirectory() : null;
+      if (!path) return null;
+      const r = await b.openRepository(path);
+      recents?.remember(path);
+      changed("open");
+      return r;
+    },
+    "repo:recent": async () => recents?.list() ?? [],
     "repo:clone": async (o) => ({ opId: runner.start("clone", `Clone ${o.url}`, (ctx) => b.cloneRepository(o, ctx), { unit: "files" }) }),
     "repo:instances": () => b.listInstances(),
     "repo:remoteList": ({ remoteUrl }) => b.listRemoteRepositories(remoteUrl),

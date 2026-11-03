@@ -3,6 +3,7 @@ import { useFiles, useBusBridge, useRepo } from "./api/queries";
 import { BottomPanel } from "./components/BottomPanel/BottomPanel";
 import { DetailPane } from "./components/DetailPane";
 import { FileTable } from "./components/FileTable";
+import { NoRepository } from "./components/NoRepository";
 import { ChangesTab } from "./components/Sidebar/ChangesTab";
 import { RepositoryTab } from "./components/Sidebar/RepositoryTab";
 import { WorkspaceTab } from "./components/Sidebar/WorkspaceTab";
@@ -23,11 +24,22 @@ export function App() {
   useBusBridge();
   useHotkeys();
   const files = useFiles();
-  const repo = useRepo().data;
+  const repoQ = useRepo();
+  const repo = repoQ.data;
   const ui = useUi();
   const lastError = useActivity((s) => s.lastError);
   const visible = useMemo(() => filterFiles(files.data ?? [], ui), [files.data, ui]);
   const { sidebarW, detailW, bottomH } = ui.layout;
+
+  if (repoQ.isSuccess && !repo) {
+    return (
+      <div className="app">
+        <Toolbar minimal />
+        <NoRepository />
+        <footer className="statusbar">{lastError && <span className="err">⚠ {lastError}</span>}</footer>
+      </div>
+    );
+  }
 
   return (
     <div className="app" style={{ "--sidebar-w": `${sidebarW}px`, "--detail-w": `${detailW}px`, "--bottom-h": `${bottomH}px` } as React.CSSProperties}>
@@ -53,7 +65,7 @@ export function App() {
             {visible.length.toLocaleString()} file(s){ui.selected.size ? ` · ${ui.selected.size} selected` : ""}
           </span>
         </div>
-        {files.isLoading ? <div className="empty">Loading files…</div> : files.isError ? <div className="empty">{files.error.message}</div> : <FileTable files={visible} />}
+        {files.isPending ? <div className="empty">Loading files…</div> : files.isError ? <div className="empty">{files.error.message}</div> : <FileTable files={visible} />}
       </main>
       <Splitter k="detailW" axis="x" sign={-1} className="splitter-v" />
       <aside className="pane detail" aria-label="Details">

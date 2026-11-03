@@ -62,6 +62,8 @@ export function useActions() {
       sync: () => run("sync", () => api.invoke("rev:sync", {})),
       switchBranch: (name: string) => run("switch", () => api.invoke("branch:switch", { name })),
       createBranch: (name: string) => run("create branch", () => api.invoke("branch:create", { name })),
+      pickRepository: () => run("open repository", () => api.invoke("repo:pick", undefined)),
+      openRepository: (path: string) => run("open repository", () => api.invoke("repo:open", { path })),
       cancel: (opId: string) => run("cancel", () => api.invoke("op:cancel", { opId })),
       openExternalDiff: (path: string) => run("external diff", () => api.invoke("file:openExternalDiff", { path })),
     };

@@ -13,6 +13,9 @@ export function useHotkeys() {
       } else if (ctrl && e.shiftKey && e.key.toLowerCase() === "s") {
         e.preventDefault();
         void a.sync();
+      } else if (ctrl && !e.shiftKey && e.key.toLowerCase() === "o") {
+        e.preventDefault();
+        void a.pickRepository();
       } else if (ctrl && e.shiftKey && e.key.toLowerCase() === "p") {
         e.preventDefault();
         void a.push();

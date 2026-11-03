@@ -27,6 +27,9 @@ export const contract = {
   "app:info": { input: z.void(), output: z.object({ backend: z.enum(["sdk", "cli", "mock"]), version: z.string(), platform: z.string() }) },
   "repo:open": { input: z.object({ path: z.string() }), output: RepoInfo },
   "repo:current": { input: z.void(), output: RepoInfo.nullable() },
+  /** Show a folder picker and open the chosen repository; null when cancelled. */
+  "repo:pick": { input: z.void(), output: RepoInfo.nullable() },
+  "repo:recent": { input: z.void(), output: z.array(z.string()) },
   "repo:clone": { input: z.object({ url: z.string(), path: z.string(), branch: z.string().optional(), viewFile: z.string().optional() }), output: OpHandle },
   "repo:instances": { input: z.void(), output: z.array(Instance) },
   "repo:remoteList": { input: z.object({ remoteUrl: z.string() }), output: z.array(RemoteRepo) },

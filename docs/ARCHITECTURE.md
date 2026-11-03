@@ -94,6 +94,8 @@ Non-goals (shown as "resolve via CLI" with the exact command): merge/cherry-pick
 - **Version skew**: CLI reference is generated from CLI 0.10.1; npm SDK is 0.12.0; the locally built CLI/server is 0.12.1-nightly. The commands used here exist in all three.
 - **Mock fixtures** are generated from a seeded PRNG (`src/main/lore/mock/fixtures.ts`, ~12k files) instead of a large committed JSON file.
 - **Sandboxed preload** must be CJS and dependency-free, so the zod-free bridge constants live in `src/shared/bridge.ts`.
+- **Installers (spec §6 non-goal, lifted at the user's request).** electron-builder produces an NSIS per-user installer and a portable exe for Windows x64 (`electron-builder.yml`, [BUILD-WINDOWS.md](BUILD-WINDOWS.md)). Packaging constraints: koffi must `LoadLibrary` a real file, so `@lore-vcs/**` and `koffi/**` are `asarUnpack`ed. The SDK already rewrites `app.asar/node_modules/@lore-vcs/sdk…` to `app.asar.unpacked` (see `dist/functions/ffi.cjs`), which only matches a hoisted layout, hence `.npmrc` `node-linker=hoisted`. `pnpm.supportedArchitectures` installs the Windows platform package on any host. The builds are unsigned, and auto-update is still a non-goal.
+- **Launch without flags.** A packaged app can't rely on `--repo`, so `repo:pick` (native folder dialog) and `repo:recent` were added, settings persist to `userData/settings.json`, and the last repository reopens on start. If the native library fails to load, a dialog offers demo (mock) mode instead of exiting.
 - **Tauri alternative** not pursued: the Electron spike passed. Tradeoff for the record: Tauri 2 gives a much smaller binary and a Rust backend that could link `lore-capi` natively (no koffi), at the cost of a second language and losing the official JS SDK.
 
 ## 6. Phase 0 spike result
@@ -133,14 +135,16 @@ Electron main output (online):
 
 **Demo server.** The README install script (`install.sh --demo`) downloads from GitHub Releases, which this container's proxy blocks (HTTP 403). Substitute: built `loreserver` and `lore` (0.12.1-nightly) from source with `cargo build --release -p lore-server -p lore-client` and started `loreserver` with no config — the same thing `--demo` does (single node, self-signed cert, temp store; QUIC/gRPC on 41337, HTTP health on 41339).
 
-**Windows: UNTESTED.** No Windows host was available. The SDK ships `@lore-vcs/sdk-amd64-unknown-windows`; nothing in the spike is platform-specific. To verify on Windows:
+**Windows: verified only by CI, see `.github/workflows/windows.yml`.** No interactive Windows host was available. The `windows` workflow on `windows-latest` does the following:
 
-```powershell
-$env:LORE_DEMO=1; irm https://raw.githubusercontent.com/EpicGames/lore/main/scripts/install.ps1 | iex
-cd lore-desktop\spike; npm install
-npx electron sdk-spike.mjs
-npx electron sdk-spike-online.mjs lore://127.0.0.1:41337
-```
+- installs the Lore CLI and server with `install.ps1`;
+- runs both spikes under Electron;
+- builds the installer;
+- smoke-tests the **packaged** `Lore Desktop.exe`, in mock mode and on a real repository (SDK backend).
+
+Check that workflow's latest run for the current status. Manual steps are in [BUILD-WINDOWS.md](BUILD-WINDOWS.md).
+
+**Packaged-app check on Linux.** `pnpm dist:dir`, then `scripts/smoke-mock.cjs --exe=dist/linux-unpacked/lore-desktop` and `scripts/smoke-sdk.cjs --exe=…`, both pass. This shows the SDK loads its native library from `app.asar.unpacked`. A cross-built `dist/win-unpacked` contains `lorelib-amd64-unknown-windows.dll` and koffi `win32_x64` only.
 
 Observations: Electron 33 warns `--use-openssl-ca is not supported` when that `NODE_OPTIONS` flag is set in the environment (harmless). pnpm 10 needs `koffi` in `onlyBuiltDependencies`.
 

@@ -3,11 +3,16 @@
 const { _electron: electron } = require("playwright");
 const path = require("node:path");
 
+// `--exe=<path>` launches a packaged build (e.g. dist/win-unpacked/Lore Desktop.exe)
+// instead of `electron .` from the repo.
+const exeArg = process.argv.find((a) => a.startsWith("--exe="))?.slice(6);
+process.argv = process.argv.filter((a) => !a.startsWith("--exe="));
+const launch = (args) => (exeArg ? { executablePath: exeArg, args } : { executablePath: require("electron"), args: [path.join(__dirname, ".."), ...args] });
+
 (async () => {
   const out = process.argv[2] ?? "smoke-mock.png";
   const app = await electron.launch({
-    executablePath: require("electron"),
-    args: [path.join(__dirname, ".."), "--mock", "--no-sandbox"],
+    ...launch(["--mock", "--no-sandbox"]),
     env: { ...process.env, ELECTRON_RENDERER_URL: "" },
   });
   const errors = [];

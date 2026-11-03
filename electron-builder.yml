@@ -1,0 +1,54 @@
+# Packaging for lore-desktop. Build with `pnpm dist:win` (Windows installer +
+# portable exe) or `pnpm dist:dir` (unpacked app for the current OS).
+appId: dev.lore.desktop
+productName: Lore Desktop
+copyright: Copyright © lore-desktop contributors
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**
+  - package.json
+  # Only the Lore SDK is a runtime dependency (everything else is bundled by Vite).
+  # Drop native prebuilds for other platforms to keep the package small.
+  - "!node_modules/koffi/build/koffi/!(win32_x64|linux_x64|darwin_arm64)/**"
+  - "!node_modules/koffi/src/**"
+  - "!node_modules/koffi/vendor/**"
+# The SDK loads its native library with koffi from a real file path. It maps
+# app.asar/node_modules/@lore-vcs/sdk* to app.asar.unpacked itself, so both the
+# SDK packages and koffi's .node binaries must be unpacked.
+asarUnpack:
+  - node_modules/@lore-vcs/**
+  - node_modules/koffi/**
+npmRebuild: false
+win:
+  # Ship only this platform's Lore library and koffi binary.
+  files:
+    - "!**/node_modules/@lore-vcs/sdk-amd64-unknown-linux/**"
+    - "!**/node_modules/@lore-vcs/sdk-arm64-*/**"
+    - "!node_modules/koffi/build/koffi/!(win32_x64)/**"
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+  # Unsigned build. rcedit (exe metadata/icon) needs Windows or wine, so it is
+  # off by default; Windows builds turn it on with
+  # `-c.win.signAndEditExecutable=true` (see pnpm dist:win:native).
+  signAndEditExecutable: false
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Lore Desktop
+  artifactName: LoreDesktop-${version}-setup-${arch}.${ext}
+portable:
+  artifactName: LoreDesktop-${version}-portable-${arch}.${ext}
+linux:
+  files:
+    - "!**/node_modules/@lore-vcs/sdk-amd64-unknown-windows/**"
+    - "!node_modules/koffi/build/koffi/!(linux_x64)/**"
+  target: [dir]
+  category: Development

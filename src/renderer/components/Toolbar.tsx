@@ -12,7 +12,7 @@ function T({ label, kbd, title, disabled, onClick }: { label: string; kbd?: stri
   );
 }
 
-export function Toolbar() {
+export function Toolbar({ minimal = false }: { minimal?: boolean }) {
   const a = useActions();
   const repo = useRepo().data;
   const info = useAppInfo().data;
@@ -23,8 +23,20 @@ export function Toolbar() {
   const sel = a.selection;
   const changed = sel.filter((f) => changeGroup(f) !== null);
 
+  if (minimal) {
+    return (
+      <div className="toolbar" role="toolbar" aria-label="Main toolbar">
+        <T label="📂 Open…" kbd="Ctrl+O" title="Open a Lore repository folder" onClick={() => void a.pickRepository()} />
+        <span className="tspacer" />
+        {info && <span className={`badge${info.backend === "mock" ? " mock" : ""}`}>{info.backend}</span>}
+      </div>
+    );
+  }
+
   return (
     <div className="toolbar" role="toolbar" aria-label="Main toolbar">
+      <T label="📂 Open…" kbd="Ctrl+O" title="Open a Lore repository folder" onClick={() => void a.pickRepository()} />
+      <span className="tsep" />
       <T label="⟳ Refresh" kbd="F5" title="Rescan working tree (lore status --scan)" onClick={() => void a.refresh(true)} />
       <T label="⇣ Sync" kbd="Ctrl+Shift+S" title="Fetch and merge remote revisions (lore sync)" onClick={() => void a.sync()} />
       <span className="tsep" />

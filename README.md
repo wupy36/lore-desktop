@@ -4,7 +4,11 @@ An open-source, essentials-only desktop GUI for the [Lore](https://github.com/Ep
 
 > Status: Phase 1 (skeleton). Runs fully on mock data; the real-Lore (SDK) backend currently supports open + status. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## Run
+## Install on Windows
+
+Download the installer from the **windows** workflow in the Actions tab, or build it with `pnpm dist:win:native`. See [docs/BUILD-WINDOWS.md](docs/BUILD-WINDOWS.md).
+
+## Run from source
 
 ```bash
 pnpm install
@@ -19,7 +23,9 @@ pnpm build
 npx electron . --repo=/path/to/lore/repository
 ```
 
-Flags: `--mock` (fixtures), `--cli` (spawn `lore`, override with `LORE_EXE`), `--repo=<path>`.
+Flags: `--mock` (fixtures), `--cli` (spawn `lore`, override with `LORE_EXE`), `--repo=<path>`. Without `--repo` the app reopens the last repository or shows *Open repository…* (Ctrl+O).
+
+Package: `pnpm dist:win:native` (on Windows: NSIS installer + portable exe), `pnpm dist:dir` (unpacked app for the current OS).
 
 ## Check
 
@@ -41,6 +47,7 @@ node scripts/smoke-sdk.cjs /path/to/repo sdk.png
 | F5 | Refresh (`lore status --scan`) |
 | Ctrl+Shift+S | Sync |
 | Ctrl+Shift+P | Push |
+| Ctrl+O | Open repository |
 | Ctrl+Enter | Commit (in message box) |
 | ↑/↓, PgUp/PgDn, Home/End (+Shift) | Move / extend selection in file table |
 | Ctrl+A | Select all |

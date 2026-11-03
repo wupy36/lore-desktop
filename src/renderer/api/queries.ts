@@ -27,13 +27,20 @@ export const useRepo = () => {
   const api = useApi();
   return useQuery({ queryKey: qk.repo, queryFn: () => api.invoke("repo:current", undefined) });
 };
+/** True once a repository is open; repo-scoped queries wait for it. */
+const useHasRepo = () => !!useRepo().data;
+
 export const useFiles = () => {
   const api = useApi();
-  return useQuery({ queryKey: qk.files, queryFn: () => api.invoke("ws:files", undefined), staleTime: 30_000 });
+  return useQuery({ queryKey: qk.files, queryFn: () => api.invoke("ws:files", undefined), staleTime: 30_000, enabled: useHasRepo() });
 };
 export const useBranches = () => {
   const api = useApi();
-  return useQuery({ queryKey: qk.branches, queryFn: () => api.invoke("branch:list", undefined) });
+  return useQuery({ queryKey: qk.branches, queryFn: () => api.invoke("branch:list", undefined), enabled: useHasRepo() });
+};
+export const useRecentRepos = () => {
+  const api = useApi();
+  return useQuery({ queryKey: ["recent"], queryFn: () => api.invoke("repo:recent", undefined) });
 };
 export const useInstances = () => {
   const api = useApi();
@@ -57,7 +64,7 @@ export const useDiff = (path: string | null, enabled: boolean, source?: string) 
 };
 export const useLocks = () => {
   const api = useApi();
-  return useQuery({ queryKey: qk.locks, queryFn: () => api.invoke("lock:query", {}) });
+  return useQuery({ queryKey: qk.locks, queryFn: () => api.invoke("lock:query", {}), enabled: useHasRepo() });
 };
 
 /** Bridge bus events -> activity store + query invalidation (debounced). */
@@ -73,7 +80,7 @@ export function useBusBridge() {
       api.on("ws:changed", () => {
         if (timer) clearTimeout(timer);
         timer = setTimeout(() => {
-          for (const key of [qk.files, qk.repo, qk.branches, qk.locks, ["history"], ["fileHistory"], ["diff"]]) void qc.invalidateQueries({ queryKey: key });
+          for (const key of [qk.files, qk.repo, ["recent"], qk.branches, qk.locks, ["history"], ["fileHistory"], ["diff"]]) void qc.invalidateQueries({ queryKey: key });
         }, 100);
       }),
     ];
