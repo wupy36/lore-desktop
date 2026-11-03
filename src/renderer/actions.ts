@@ -64,6 +64,8 @@ export function useActions() {
       createBranch: (name: string) => run("create branch", () => api.invoke("branch:create", { name })),
       pickRepository: () => run("open repository", () => api.invoke("repo:pick", undefined)),
       openRepository: (path: string) => run("open repository", () => api.invoke("repo:open", { path })),
+      clone: (url: string, path: string) => run("clone", () => api.invoke("repo:clone", { url, path })),
+      pickFolder: (title?: string) => api.invoke("dialog:pickFolder", { title }).catch(() => null),
       cancel: (opId: string) => run("cancel", () => api.invoke("op:cancel", { opId })),
       openExternalDiff: (path: string) => run("external diff", () => api.invoke("file:openExternalDiff", { path })),
     };

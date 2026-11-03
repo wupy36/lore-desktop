@@ -77,7 +77,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .tbtn .kbd { color: var(--text-faint); font-size: 11px; }
 .tsep { width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
 .tspacer { flex: 1; }
-.badge { font-size: 11px; padding: 1px 6px; border-radius: 8px; background: var(--bg-3); color: var(--text-dim); }
+.badge { white-space: nowrap; font-size: 11px; padding: 1px 6px; border-radius: 8px; background: var(--bg-3); color: var(--text-dim); }
 .badge.mock { background: #4b3b14; color: #e5c07b; }
 .badge.ahead { background: var(--accent-bg); color: var(--accent); }
 

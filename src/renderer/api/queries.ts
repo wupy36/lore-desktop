@@ -72,7 +72,8 @@ export function useBusBridge() {
   const api = useApi();
   const qc = useQueryClient();
   useEffect(() => {
-    const { pushLog, upsertTransfer } = useActivity.getState();
+    const { pushLog, upsertTransfer, backfill } = useActivity.getState();
+    void api.invoke("app:logHistory", undefined).then(backfill, () => undefined);
     let timer: ReturnType<typeof setTimeout> | null = null;
     const offs = [
       api.on("log", pushLog),

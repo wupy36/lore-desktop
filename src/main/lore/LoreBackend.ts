@@ -55,6 +55,9 @@ export interface CloneOptions {
 
 export interface LoreBackend {
   readonly kind: BackendKind;
+  /** Whether a long op actually stops when its AbortSignal fires. Lore's C API has
+   * no per-call cancel, so the SDK backend reports false and the UI hides Cancel. */
+  readonly canCancel: boolean;
 
   openRepository(path: string): Promise<RepoInfo>;
   currentRepository(): RepoInfo | null;
@@ -68,6 +71,8 @@ export interface LoreBackend {
   stage(paths: string[], ctx?: OpContext): Promise<void>;
   unstage(paths: string[]): Promise<void>;
   reset(paths: string[], opts?: { purge?: boolean }): Promise<void>;
+  /** Tell Lore these paths changed on disk (`lore dirty`). Fed by the FS watcher. */
+  markDirty(paths: string[]): Promise<void>;
 
   commit(message: string, ctx?: OpContext): Promise<Revision>;
   push(branch: string | undefined, ctx: OpContext): Promise<void>;

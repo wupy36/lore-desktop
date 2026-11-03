@@ -7,6 +7,7 @@ export default defineConfig({
   resolve: { alias: { "@shared": resolve(__dirname, "src/shared") } },
   test: {
     include: ["tests/**/*.test.{ts,tsx}"],
+    exclude: ["tests/integration/**", "node_modules/**"],
     environmentMatchGlobs: [["tests/renderer/**", "jsdom"]],
     environment: "node",
   },

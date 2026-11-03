@@ -25,3 +25,41 @@ describe("SDK mappers", () => {
     expect(mapStatusFile(ev({ flagConflict: 1, flagConflictUnresolved: 1 }))?.conflict).toBe(true);
   });
 });
+
+import { mapStatusRevision, mapSyncProgress, mergeTreeAndStatus } from "../../src/main/lore/mappers";
+import type { FileEntry } from "@shared/types";
+
+type Rev = Parameters<typeof mapStatusRevision>[0];
+const revEv = (p: Record<string, unknown>) =>
+  ({ repository: { toString: () => "r1" }, branchName: "main", revision: { toString: () => "ab" }, revisionNumber: 3, revisionLocalNumber: 3, revisionRemoteNumber: 3, isLocalAhead: 0, remoteAvailable: 1, remoteBranchExist: 1, ...p }) as unknown as Rev;
+
+describe("status revision → ahead count", () => {
+  it("in sync", () => expect(mapStatusRevision(revEv({})).aheadBy).toBe(0));
+  it("two local commits", () => expect(mapStatusRevision(revEv({ revisionLocalNumber: 5, isLocalAhead: 1 })).aheadBy).toBe(2));
+  it("branch never pushed", () => expect(mapStatusRevision(revEv({ revisionLocalNumber: 2, revisionRemoteNumber: 0, isLocalAhead: 1, remoteBranchExist: 0 })).aheadBy).toBe(2));
+  it("offline", () => expect(mapStatusRevision(revEv({ remoteAvailable: 0 })).remoteAvailable).toBe(false));
+});
+
+describe("progress", () => {
+  it("sync is indeterminate until discovery completes", () => {
+    type P = Parameters<typeof mapSyncProgress>[0];
+    expect(mapSyncProgress({ fileUpdate: 3, fileUpdateTotal: 10, fileDelete: 0, fileDeleteTotal: 0, discoveryComplete: 0 } as unknown as P)).toMatchObject({ current: 3, total: null });
+    expect(mapSyncProgress({ fileUpdate: 3, fileUpdateTotal: 10, fileDelete: 1, fileDeleteTotal: 2, discoveryComplete: 1 } as unknown as P)).toMatchObject({ current: 4, total: 12 });
+  });
+});
+
+describe("mergeTreeAndStatus", () => {
+  const f = (p: Partial<FileEntry>): FileEntry => ({ path: "x", size: 1, action: "none", staged: false, dirty: false, conflict: false, fromPath: null, lastRevision: null, lockOwner: null, binary: false, ...p });
+  it("overlays status on the committed tree", () => {
+    const out = mergeTreeAndStatus(
+      [{ path: "a.txt", size: 5 }, { path: "old.txt", size: 2 }, { path: "gone.txt", size: 3 }],
+      [f({ path: "new.txt", action: "add", dirty: true }), f({ path: "moved.txt", action: "move", fromPath: "old.txt", staged: true }), f({ path: "gone.txt", action: "delete", dirty: true })],
+    );
+    expect(out.map((x) => [x.path, x.action])).toEqual([
+      ["a.txt", "none"],
+      ["gone.txt", "delete"],
+      ["new.txt", "add"],
+      ["moved.txt", "move"],
+    ]);
+  });
+});

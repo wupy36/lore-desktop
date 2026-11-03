@@ -9,6 +9,8 @@ export interface ActivityState {
   transfers: Transfer[]; // newest first
   lastError: string | null;
   pushLog(e: LogEntry): void;
+  /** Merge entries logged before this renderer subscribed (deduped by id, kept in order). */
+  backfill(entries: LogEntry[]): void;
   upsertTransfer(t: Transfer): void;
   setError(msg: string | null): void;
   clearLog(): void;
@@ -23,6 +25,12 @@ export const useActivity = create<ActivityState>()((set) => ({
     set((s) => {
       const log = s.log.length >= MAX_LOG ? [...s.log.slice(s.log.length - MAX_LOG + 1), e] : [...s.log, e];
       return { log, lastError: e.ok === false ? `${e.op}: ${e.message}` : s.lastError };
+    }),
+  backfill: (entries) =>
+    set((s) => {
+      const seen = new Set(s.log.map((e) => e.id));
+      const merged = [...entries.filter((e) => !seen.has(e.id)), ...s.log].sort((a, b) => a.id - b.id);
+      return { log: merged.slice(-MAX_LOG) };
     }),
   upsertTransfer: (t) =>
     set((s) => {

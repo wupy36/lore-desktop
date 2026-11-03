@@ -46,6 +46,7 @@ const clone = <T>(v: T): T => structuredClone(v);
 
 export class MockBackend implements LoreBackend {
   readonly kind = "mock" as const;
+  readonly canCancel = true;
   private data: MockRepoData;
   private repo: RepoInfo | null = null;
   private byPath = new Map<string, FileEntry>();
@@ -196,6 +197,13 @@ export class MockBackend implements LoreBackend {
     if (drop.size) {
       this.data.files = this.data.files.filter((f) => !drop.has(f));
       this.reindex();
+    }
+  }
+
+  async markDirty(paths: string[]): Promise<void> {
+    for (const p of paths) {
+      const f = this.byPath.get(p);
+      if (f && f.action === "none") Object.assign(f, { dirty: true, action: "modify" });
     }
   }
 

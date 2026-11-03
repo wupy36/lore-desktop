@@ -17,6 +17,7 @@ export const cli = {
   stage: (paths: string[]): Argv => ["stage", ...paths],
   unstage: (paths: string[]): Argv => ["unstage", ...paths],
   reset: (paths: string[], purge?: boolean): Argv => ["reset", ...(purge ? ["--purge"] : []), ...paths],
+  dirty: (paths: string[]): Argv => ["dirty", ...paths],
   commit: (message: string): Argv => ["commit", message],
   push: (branch?: string): Argv => ["push", ...(branch ? [branch] : [])],
   sync: (o: { revision?: string; reset?: boolean; viewFile?: string; rootFiles?: string[] }): Argv => [

@@ -15,6 +15,7 @@ const commandFor: Partial<Record<keyof LoreBackend, CmdBuilder>> = {
   stage: cli.stage,
   unstage: cli.unstage,
   reset: (p: string[], o?: { purge?: boolean }) => cli.reset(p, o?.purge),
+  markDirty: cli.dirty,
   commit: cli.commit,
   push: cli.push,
   sync: cli.sync,
@@ -34,7 +35,7 @@ const commandFor: Partial<Record<keyof LoreBackend, CmdBuilder>> = {
   listInstances: cli.instanceList,
 };
 
-const SILENT = new Set<string>(["currentRepository", "kind", "dispose"]);
+const SILENT = new Set<string>(["currentRepository", "kind", "canCancel", "dispose"]);
 let logSeq = 0;
 
 export function nextLogId(): number {

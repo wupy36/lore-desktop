@@ -2,7 +2,7 @@
 
 An open-source, essentials-only desktop GUI for the [Lore](https://github.com/EpicGames/lore) version control system. Dense, dark-first, multi-pane, table-centric — layout inspired by P4V, semantics strictly Lore's.
 
-> Status: Phase 1 (skeleton). Runs fully on mock data; the real-Lore (SDK) backend currently supports open + status. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+> Status: Phase 2 (core loop). On a real repository (SDK backend): open/clone, full file tree, status with FS-watcher refresh, stage/unstage/reset, commit, push, sync with progress. History/diff/branches (Phase 3) and locks/views (Phase 4) run on mock data only. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Install on Windows
 
@@ -33,11 +33,18 @@ Package: `pnpm dist:win:native` (on Windows: NSIS installer + portable exe), `pn
 pnpm typecheck && pnpm lint && pnpm test
 ```
 
+Integration tests against a real Lore server (for example the demo server, `loreserver` with no config):
+
+```bash
+LORE_IT_REMOTE=lore://127.0.0.1:41337 pnpm test:it
+```
+
 Smoke tests on the built app (need a display; use `xvfb-run -a` on headless Linux):
 
 ```bash
 node scripts/smoke-mock.cjs mock.png
 node scripts/smoke-sdk.cjs /path/to/repo sdk.png
+node scripts/smoke-sdk-loop.cjs /path/to/repo loop.png   # edit -> watcher -> stage -> commit -> push
 ```
 
 ## Hotkeys

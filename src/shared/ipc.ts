@@ -24,6 +24,10 @@ const Ok = z.object({ ok: z.literal(true) });
 export const OpHandle = z.object({ opId: z.string() });
 
 export const contract = {
+  /** Log entries emitted before the renderer subscribed (startup open, etc.). */
+  "app:logHistory": { input: z.void(), output: z.array(LogEntry) },
+  /** Native folder picker; null when cancelled. */
+  "dialog:pickFolder": { input: z.object({ title: z.string().optional() }), output: z.string().nullable() },
   "app:info": { input: z.void(), output: z.object({ backend: z.enum(["sdk", "cli", "mock"]), version: z.string(), platform: z.string() }) },
   "repo:open": { input: z.object({ path: z.string() }), output: RepoInfo },
   "repo:current": { input: z.void(), output: RepoInfo.nullable() },

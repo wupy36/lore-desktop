@@ -15,16 +15,37 @@ export interface HandlerDeps {
   openExternalDiff?: (input: In<"file:openExternalDiff">) => Promise<void>;
   /** Native folder picker (Electron dialog); returns null when cancelled. */
   pickDirectory?: () => Promise<string | null>;
+  /** FS watcher hooks: paused around ops that write the working tree, restarted on open. */
+  watcher?: { pause(): void; resume(): void; start(root: string): void };
+  /** Backfill for the console panel. */
+  logHistory?: { list(): Out<"app:logHistory"> };
   /** Recent-repository persistence (Electron userData). */
   recents?: { list(): string[]; remember(path: string): void };
 }
 
-export function createHandlers({ backend: b, runner, bus, info, openExternalDiff, pickDirectory, recents }: HandlerDeps): Handlers {
+export function createHandlers({ backend: b, runner, bus, info, openExternalDiff, pickDirectory, recents, logHistory, watcher }: HandlerDeps): Handlers {
   const changed = (reason: string) => bus.emit("ws:changed", { reason });
+  /** Ops that write the working tree run with the watcher paused (their writes are not user edits). */
+  const writesTree =
+    <A extends unknown[]>(fn: (...a: A) => Promise<unknown>) =>
+    async (...a: A) => {
+      watcher?.pause();
+      try {
+        return await fn(...a);
+      } finally {
+        watcher?.resume();
+      }
+    };
+  const opened = <R extends { path: string }>(r: R): R => {
+    watcher?.start(r.path);
+    return r;
+  };
   return {
     "app:info": async () => info,
+    "app:logHistory": async () => logHistory?.list() ?? [],
+    "dialog:pickFolder": async () => (pickDirectory ? pickDirectory() : null),
     "repo:open": async ({ path }) => {
-      const r = await b.openRepository(path);
+      const r = opened(await b.openRepository(path));
       recents?.remember(path);
       changed("open");
       return r;
@@ -33,13 +54,13 @@ export function createHandlers({ backend: b, runner, bus, info, openExternalDiff
     "repo:pick": async () => {
       const path = pickDirectory ? await pickDirectory() : null;
       if (!path) return null;
-      const r = await b.openRepository(path);
+      const r = opened(await b.openRepository(path));
       recents?.remember(path);
       changed("open");
       return r;
     },
     "repo:recent": async () => recents?.list() ?? [],
-    "repo:clone": async (o) => ({ opId: runner.start("clone", `Clone ${o.url}`, (ctx) => b.cloneRepository(o, ctx), { unit: "files" }) }),
+    "repo:clone": async (o) => ({ opId: runner.start("clone", `Clone ${o.url}`, writesTree(async (ctx) => { const r = opened(await b.cloneRepository(o, ctx)); recents?.remember(r.path); return r; }), { unit: "files", cancellable: b.canCancel }) }),
     "repo:instances": () => b.listInstances(),
     "repo:remoteList": ({ remoteUrl }) => b.listRemoteRepositories(remoteUrl),
 
@@ -56,7 +77,7 @@ export function createHandlers({ backend: b, runner, bus, info, openExternalDiff
       return { ok: true } as const;
     },
     "ws:reset": async ({ paths, purge }) => {
-      await b.reset(paths, { purge });
+      await writesTree(() => b.reset(paths, { purge }))();
       changed("reset");
       return { ok: true } as const;
     },
@@ -66,8 +87,8 @@ export function createHandlers({ backend: b, runner, bus, info, openExternalDiff
       changed("commit");
       return r;
     },
-    "rev:push": async ({ branch }) => ({ opId: runner.start("push", `Push ${branch ?? "current branch"}`, (ctx) => b.push(branch, ctx), { unit: "fragments" }) }),
-    "rev:sync": async (o) => ({ opId: runner.start("sync", `Sync ${o.revision ?? "latest"}`, (ctx) => b.sync(o, ctx), { unit: "files" }) }),
+    "rev:push": async ({ branch }) => ({ opId: runner.start("push", `Push ${branch ?? "current branch"}`, (ctx) => b.push(branch, ctx), { unit: "fragments", cancellable: b.canCancel }) }),
+    "rev:sync": async (o) => ({ opId: runner.start("sync", `Sync ${o.revision ?? "latest"}`, writesTree((ctx) => b.sync(o, ctx)), { unit: "files", cancellable: b.canCancel }) }),
     "rev:history": (o) => b.history(o),
     "file:history": ({ path, length }) => b.fileHistory(path, length),
     "file:diff": (o) => b.diff(o),
@@ -78,7 +99,7 @@ export function createHandlers({ backend: b, runner, bus, info, openExternalDiff
     },
 
     "branch:list": () => b.listBranches(),
-    "branch:switch": async ({ name, reset }) => ({ opId: runner.start("switch", `Switch to ${name}`, (ctx) => b.switchBranch(name, { reset }, ctx), { unit: "files" }) }),
+    "branch:switch": async ({ name, reset }) => ({ opId: runner.start("switch", `Switch to ${name}`, writesTree((ctx) => b.switchBranch(name, { reset }, ctx)), { unit: "files", cancellable: b.canCancel }) }),
     "branch:create": async ({ name }) => {
       const br = await b.createBranch(name);
       changed("branch");
@@ -100,7 +121,7 @@ export function createHandlers({ backend: b, runner, bus, info, openExternalDiff
     "auth:info": () => b.authInfo(),
 
     "view:get": async () => ({ rules: await b.getView() }),
-    "view:apply": async ({ rules }) => ({ opId: runner.start("view", "Apply view filter", (ctx) => b.applyView(rules, ctx), { unit: "files" }) }),
+    "view:apply": async ({ rules }) => ({ opId: runner.start("view", "Apply view filter", writesTree((ctx) => b.applyView(rules, ctx)), { unit: "files", cancellable: b.canCancel }) }),
 
     "op:cancel": async ({ opId }) => ({ cancelled: runner.cancel(opId) }),
   };

@@ -43,7 +43,7 @@ Published docs site: <https://epicgames.github.io/lore/>.
 
 | P4V idea | Lore (CLI / SDK) | GUI treatment | Notes |
 | --- | --- | --- | --- |
-| Workspace | Repository instance; `repository clone/info/instance list` · `repositoryClone/Info/InstanceList` | Repository tab → local instances; open by path | ✓ exists |
+| Workspace | Repository instance; `repository clone/info/instance list` · `repositoryClone/Info/InstanceList` | Open repository / recent list (all workspaces); Repository tab → instances of this store | `instance list` only returns instances **sharing this repository's store** (verified: an independent clone is not listed), so the cross-workspace list is the app's own recent list |
 | Depot / stream tree | `repository list <remote>`, `branch list/info` · `repositoryList`, `branchList` | Repository tab: remote repos + branches | No stream hierarchy; branches are flat named pointers |
 | Pending changelist | Staged vs dirty flags; `status [--scan\|--check-dirty]`, `stage`, `unstage`, `dirty` | Changes tab: Staged / Modified (not staged) / Untracked | Single implicit "changelist" (the staged state). No numbered pending changelists — **does not exist** |
 | Submit | `commit <msg>` then `push` | Commit and Push are separate buttons; badge "N to push" | ✓ two steps |
@@ -87,8 +87,11 @@ Non-goals (shown as "resolve via CLI" with the exact command): merge/cherry-pick
 ## 5. Decisions and deviations
 
 - **Cancellation.** Lore's C API has no per-call cancel. SdkBackend "cancel" marks the transfer cancelled and drops the result; the native call runs to completion. CliBackend kills the child process. MockBackend honours `AbortSignal`. Transfers carry `cancellable` so the UI only offers Cancel where it is meaningful (Phase 2 sets SDK ops to `cancellable: false` unless we route them via CLI).
-- **Full file listing.** `status` reports only changed nodes. A P4V-style "all files" table needs the tree: Phase 2 plan is `revisionTreeListChildren` (SDK) merged with status, falling back to an FS walk filtered by `.loreignore`. Phase 1 SdkBackend lists changed files only.
-- **FS watcher** (Phase 2): main-process recursive watcher → `fileDirty` for touched paths (Lore's own recommended path for editors/tools, system-design §15.3) + debounced `status` refresh. Not built yet.
+- **Full file listing.** `status` reports only changed nodes, so the "all files" table comes from the committed tree via the low-level revision API: `storageOpen({repositoryPath})` → `revisionTreeLoad({store, repository, revisionHash})` → breadth-first `revisionTreeListChildren` (8 in flight) → close both. Status entries are then overlaid (`mergeTreeAndStatus`). The listing is cached per revision hash, since revisions are immutable. No disk walk: `.loreignore` and untracked junk are Lore's business, not the GUI's. Status reports size 0 for unstaged changes (Lore reads no content until stage), so the backend `stat`s just the changed files.
+- **FS watcher.** Main-process recursive `fs.watch` (`src/main/watcher.ts`), debounced 300 ms. Changed paths go to `lore dirty` (Lore's recommended path for editors/tools, system-design §15.3), then `status --check-dirty` drops files whose content turns out unchanged. `.lore/` is ignored. The watcher is **paused** around ops that write the working tree (sync, reset, branch switch, clone, view), plus a 500 ms settle period, so Lore's own writes aren't reported as edits.
+- **One queue per SdkBackend.** Every SDK call is serialized. Lore takes a repository lock per operation, so a watcher refresh during a sync would only contend. Reads queue behind long ops; the UI shows the last known state meanwhile.
+- **Ahead/offline** come from the status revision event (`isLocalAhead`, `revisionLocalNumber`/`revisionRemoteNumber`, `remoteAvailable`, `remoteBranchExist`). The remote URL: `.lore/config.toml` only stores the server root (`remote_url`), so the repository name is found by matching the repository id in `repository list <remote_url>`.
+- **Progress mapping** (`mappers.ts`): sync uses files (`fileUpdate+fileDelete` / totals); push, clone and commit use bytes or files. Totals are reported only after `discoveryComplete`, and as indeterminate before that.
 - **Background service**: only affects the CLI backend (the SDK links the library in-process). CliBackend works unchanged when the user has enabled `lore service set-use-automatically true`.
 - **Versions pinned exactly**, deliberately conservative (React 18.3.1, TanStack Table 8.20.5, zod 3.23.8, Vite 5.4.11, electron-vite 2.3.0, Electron 33.2.1, TypeScript 5.7.2). Newer majors exist (React 19, Table 9, zod 4, Vite 8); upgrading is a separate, mechanical step. `@lore-vcs/sdk` pinned to **0.12.0** (latest on npm).
 - **Version skew**: CLI reference is generated from CLI 0.10.1; npm SDK is 0.12.0; the locally built CLI/server is 0.12.1-nightly. The commands used here exist in all three.
@@ -156,6 +159,24 @@ Observations: Electron 33 warns `--use-openssl-ca is not supported` when that `N
 
 ## 7. Phase status
 
+### Phase 2 (core loop) — done
+
+`SdkBackend` implements open (status revision + config + remote name), clone, instance list, remote repository list, status (`--scan` / `--check-dirty`), full file listing, stage, unstage, reset, dirty, commit, push, and sync, with per-op progress into the transfer queue. The FS watcher drives incremental refresh. The console backfills startup logs (`app:logHistory`). There is a clone form on the first-run screen and in the Repository tab.
+
+Verified (Linux, SDK 0.12.0 against a locally built `loreserver` 0.12.1-nightly):
+- `LORE_IT_REMOTE=lore://127.0.0.1:41337 pnpm test:it`: **6/6**. Seed and push a repo → clone (remote URL resolved by name) → full tree with sizes → dirty, status, stage, unstage, reset (`--check-dirty` clears) → commit (rev 2, ahead 1) → push (ahead 0) → sync another instance to rev 2 → instance and remote listing → Lore error surfaced.
+- `scripts/smoke-sdk-loop.cjs` through the real UI: committed tree shown as synced → new file on disk appears as *untracked* via the watcher (~0.8 s) → Stage from the context menu → *added* → Ctrl+Enter commit → "1 to push" → Push → in sync. The console shows the `lore dirty`, `status --check-dirty`, `stage`, `commit`, and `push` lines.
+- `pnpm test`: 60 unit and component tests (watcher, mappers, settings, IPC, MockBackend, UI).
+- The Windows CI job runs the same integration tests, plus the UI loop against the packaged exe.
+
+Untested / known gaps:
+- **Cancel**: Lore has no per-call cancel, so SDK transfers show no Cancel button (`canCancel = false`).
+- **Conflicts after sync**: files with unresolved conflicts are flagged and the Changes tab shows the CLI resolve commands, but no real conflicting sync has been exercised yet.
+- **Auth** (`auth info/login`) is not wired; demo servers are unauthenticated.
+- **Large trees**: tree listing cost is one native call per directory. Not yet measured on a 100k-file repository.
+- **Last revision** column is empty for real repositories until Phase 3 (file history).
+- **Watcher scale**: `fs.watch` recursive on very large trees (Linux inotify limits) is untested.
+
 ### Phase 1 (skeleton) — done
 
 Verified:
@@ -164,7 +185,6 @@ Verified:
 
 Untested / not built yet:
 - macOS (Linux verified locally, Windows verified on CI; see §6).
-- SdkBackend beyond open/status (stage, commit, push, sync, … are stubs that throw "Phase N").
-- CliBackend beyond process plumbing.
-- Logs emitted before the renderer subscribes (e.g. the startup `openRepository`) are not buffered.
-- External diff tool configuration; view-filter editor; FS watcher.
+- (Phase 1 gaps for the SDK backend, log backfill and the watcher are closed by Phase 2, above.)
+- CliBackend beyond process plumbing. Every op the app needs exists in the SDK, so the CLI fallback stays a stub until something is missing.
+- External diff tool configuration; view-filter editor.

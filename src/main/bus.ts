@@ -18,3 +18,20 @@ export class Bus {
     for (const cb of this.listeners.get(event) ?? []) (cb as Listener<E>)(payload);
   }
 }
+
+/** Ring buffer of recent log entries so a renderer that (re)loads can backfill its console. */
+export class LogHistory {
+  private entries: EventPayload<"log">[] = [];
+  constructor(
+    bus: Bus,
+    private readonly max = 1000,
+  ) {
+    bus.on("log", (e) => {
+      this.entries.push(e);
+      if (this.entries.length > this.max) this.entries.splice(0, this.entries.length - this.max);
+    });
+  }
+  list(): EventPayload<"log">[] {
+    return [...this.entries];
+  }
+}

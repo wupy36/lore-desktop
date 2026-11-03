@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { app, BrowserWindow, dialog, Menu, shell, type MenuItemConstructorOptions } from "electron";
-import { Bus } from "./bus";
+import { Bus, LogHistory } from "./bus";
 import { createHandlers, type Handlers } from "./handlers";
 import { registerIpc } from "./ipc";
 import { CliBackend } from "./lore/CliBackend";
@@ -9,6 +9,7 @@ import type { LoreBackend } from "./lore/LoreBackend";
 import { MockBackend } from "./lore/MockBackend";
 import { OpRunner } from "./runner";
 import { SettingsStore } from "./settings";
+import { nodeWatch, RepoWatcher } from "./watcher";
 
 const argv = process.argv;
 const forceMock = argv.includes("--mock") || process.env.LORE_DESKTOP_MOCK === "1";
@@ -93,7 +94,31 @@ async function main() {
   const runner = new OpRunner(bus);
   const raw = await createBackend();
   const backend = instrument(raw, bus);
+  const logHistory = new LogHistory(bus);
+  const repoWatcher = new RepoWatcher({
+    bus,
+    watch: nodeWatch,
+    markDirty: (paths) => backend.markDirty(paths),
+    checkDirty: () => backend.status({ checkDirty: true }),
+  });
+  // The mock repository has no directory on disk.
+  const watcher =
+    raw.kind === "mock"
+      ? undefined
+      : {
+          pause: () => repoWatcher.pause(),
+          resume: () => repoWatcher.resume(),
+          start: (root: string) => {
+            try {
+              repoWatcher.start(root);
+            } catch (e) {
+              console.error("watch failed", e);
+            }
+          },
+        };
   const handlers = createHandlers({
+    logHistory,
+    watcher,
     backend,
     runner,
     bus,
@@ -120,7 +145,10 @@ async function main() {
   // Open on start: explicit --repo, else the mock fixture, else the last repository.
   const initial = repoArg ?? (raw.kind === "mock" ? "D:/Lore/ShooterGame" : settings.get().lastRepo);
   if (initial) {
-    await backend.openRepository(initial).catch((e: unknown) => {
+    await backend
+      .openRepository(initial)
+      .then((r) => watcher?.start(r.path))
+      .catch((e: unknown) => {
       console.error("open failed", e);
       if (!repoArg && raw.kind !== "mock") settings.forgetRepo(initial);
     });
@@ -149,6 +177,7 @@ async function main() {
   else await win.loadFile(join(__dirname, "../renderer/index.html"));
 
   app.on("window-all-closed", () => {
+    repoWatcher.stop();
     runner.cancelAll();
     void raw.dispose().finally(() => app.quit());
   });

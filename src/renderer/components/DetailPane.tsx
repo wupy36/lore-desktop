@@ -12,7 +12,8 @@ export function DetailPane() {
   const setTab = useUi((s) => s.setDetailTab);
   const files = useFiles().data;
   const file = useMemo(() => files?.find((f) => f.path === focused) ?? null, [files, focused]);
-  const history = useFileHistory(file && file.lastRevision !== null ? file.path : null);
+  const isNew = !!file && (file.action === "add" || file.action === "copy");
+  const history = useFileHistory(file && !isNew ? file.path : null);
   const diff = useDiff(file?.path ?? null, tab === "diff");
   const actions = useActions();
 
@@ -47,7 +48,7 @@ export function DetailPane() {
       </div>
       <div className="pane-body">
         {tab === "history" &&
-          (file.lastRevision === null ? (
+          (isNew ? (
             <div className="empty">New file — no history yet.</div>
           ) : history.isLoading ? (
             <div className="empty">Loading…</div>

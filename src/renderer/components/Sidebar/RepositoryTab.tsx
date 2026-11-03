@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useActions } from "../../actions";
 import { useBranches, useInstances, useRemotes, useRepo } from "../../api/queries";
+import { CloneForm } from "../CloneForm";
 
 /** Remote host part of a repository URL: lore://host:port/name -> lore://host:port */
 const remoteRoot = (url: string | null | undefined) => (url ? url.replace(/\/[^/]+\/?$/, "") : null);
@@ -60,8 +61,11 @@ export function RepositoryTab() {
         </button>
       </form>
 
+      <CloneForm defaultUrl={remoteRoot(repo?.remoteUrl) ? `${remoteRoot(repo?.remoteUrl)}/` : ""} />
+
       <div className="group-title">
-        <span className="grow">Local instances</span>
+        <span className="grow">Instances of this store</span>
+        <span className="hint" title="lore repository instance list: instances sharing this repository's store. Other workspaces are under File → Open recent.">?</span>
       </div>
       {instances.data?.map((i) => (
         <div key={i.instanceId} className={`list-row${i.path === repo?.path ? " active" : ""}`} title={i.instanceId}>

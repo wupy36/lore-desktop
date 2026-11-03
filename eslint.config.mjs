@@ -21,7 +21,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ["src/main/lore/SdkBackend.ts", "src/main/lore/mappers.ts", "tests/main/mappers.test.ts"],
+    files: ["src/main/lore/SdkBackend.ts", "src/main/lore/mappers.ts", "tests/main/mappers.test.ts", "tests/integration/**"],
     rules: { "no-restricted-imports": "off" },
   },
   {

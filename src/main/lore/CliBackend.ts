@@ -37,6 +37,7 @@ const notYet = (op: string) => () => Promise.reject(new LoreError(`${op}: not im
 
 export class CliBackend implements LoreBackend {
   readonly kind = "cli" as const;
+  readonly canCancel = true;
   private repo: RepoInfo | null = null;
 
   constructor(private readonly exe = "lore") {}
@@ -64,6 +65,7 @@ export class CliBackend implements LoreBackend {
   stage = notYet("stage");
   unstage = notYet("unstage");
   reset = notYet("reset");
+  markDirty = notYet("dirty");
   commit = notYet("commit");
   push = notYet("push");
   sync = notYet("sync");

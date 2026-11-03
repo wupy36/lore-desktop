@@ -56,6 +56,13 @@ jobs:
           npx electron sdk-spike.mjs
           npx electron sdk-spike-online.mjs lore://127.0.0.1:41337
 
+      - name: Integration tests (SdkBackend against real Lore)
+        env:
+          LORE_IT_REMOTE: lore://127.0.0.1:41337
+        run: |
+          ./scripts/ci/start-loreserver.ps1
+          pnpm test:it
+
       - name: Package (NSIS installer + portable)
         run: pnpm dist:win:native
 
@@ -72,6 +79,7 @@ jobs:
           lore --non-interactive repository create lore://127.0.0.1:41337/DesktopDemo
           New-Item -ItemType Directory Source | Out-Null
           Set-Content Source/main.cpp 'int main(){}'
+          Set-Content Game.ini 'cfg=1'
           lore --non-interactive stage --scan .
           lore --non-interactive commit "Initial import"
           lore --non-interactive push
@@ -83,6 +91,8 @@ jobs:
           $r = Get-Content smoke-sdk.json -Raw | ConvertFrom-Json
           if (-not ($r.rows | Where-Object { $_[0] -eq 'Source/main.cpp' -and $_[1] -eq 'staged' })) { throw "main.cpp not shown as staged" }
           if (-not ($r.rows | Where-Object { $_[0] -eq 'Source/new.h' -and $_[1] -eq 'untracked' })) { throw "new.h not shown as untracked" }
+          # Core loop through the UI: watcher -> stage -> commit -> push.
+          node scripts/smoke-sdk-loop.cjs "--exe=dist/win-unpacked/Lore Desktop.exe" $repo smoke-sdk-loop.png
 
       - uses: actions/upload-artifact@v6
         with:

@@ -18,7 +18,8 @@
     "spike": "node spike/sdk-spike.mjs",
     "dist:win": "electron-vite build && electron-builder --win nsis portable --x64 --publish never",
     "dist:dir": "electron-vite build && electron-builder --dir --publish never",
-    "dist:win:native": "electron-vite build && electron-builder --win nsis portable --x64 --publish never -c.win.signAndEditExecutable=true"
+    "dist:win:native": "electron-vite build && electron-builder --win nsis portable --x64 --publish never -c.win.signAndEditExecutable=true",
+    "test:it": "vitest run -c vitest.it.config.ts"
   },
   "dependencies": {
     "@lore-vcs/sdk": "0.12.0"
