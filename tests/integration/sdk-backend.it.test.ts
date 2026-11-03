@@ -2,7 +2,7 @@
 // LORE_IT_REMOTE is set, e.g.  LORE_IT_REMOTE=lore://127.0.0.1:41337 pnpm test:it
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, normalize } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { SdkBackend } from "../../src/main/lore/SdkBackend";
 import type { OpContext, Progress } from "../../src/main/lore/LoreBackend";
@@ -97,7 +97,8 @@ describe.skipIf(!REMOTE)("SdkBackend (real Lore)", () => {
     // `repository instance list` reports instances sharing THIS repository's store; independent
     // clones each have their own store, so only the open one is listed.
     const inst = await b.listInstances();
-    expect(inst.map((i) => i.path)).toEqual([seedPath]);
+    // Paths come back in native form (Lore itself reports forward slashes on Windows).
+    expect(inst.map((i) => i.path)).toEqual([normalize(seedPath)]);
     const remotes = await b.listRemoteRepositories(REMOTE as string);
     expect(remotes.some((r) => r.name === name)).toBe(true);
   });

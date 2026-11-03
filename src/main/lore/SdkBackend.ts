@@ -10,7 +10,7 @@
 // operation, and running e.g. a status refresh concurrently with a sync would
 // only contend on it.
 import { stat } from "node:fs/promises";
-import { join } from "node:path";
+import { join, normalize } from "node:path";
 import type * as Sdk from "@lore-vcs/sdk";
 import type * as SdkEnums from "@lore-vcs/sdk/types/enums";
 import type { LoreGlobalArgs } from "@lore-vcs/sdk/types/args";
@@ -291,7 +291,8 @@ export class SdkBackend implements LoreBackend {
       const g = this.repo ? this.globals() : {};
       await this.run(this.sdk.lore.repositoryInstanceList(g, {}), (e) => {
         if (e.tag === LoreEventTag.REPOSITORY_INSTANCE && !e.data.stale) {
-          const path = String(e.data.path);
+          // Lore reports forward slashes on Windows (C:/Users/...); use the native form the rest of the app uses.
+          const path = normalize(String(e.data.path));
           out.push({ path, instanceId: e.data.instanceId.toString(), repositoryName: baseName(path) });
         }
       });
