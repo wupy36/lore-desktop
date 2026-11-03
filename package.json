@@ -1,0 +1,51 @@
+{
+  "name": "lore-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Essentials-only desktop GUI for the Lore version control system",
+  "license": "MIT",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "dev:mock": "electron-vite dev -- --mock",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "start:mock": "electron-vite preview -- --mock",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "spike": "node spike/sdk-spike.mjs"
+  },
+  "dependencies": {
+    "@lore-vcs/sdk": "0.12.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.16.0",
+    "@tanstack/react-query": "5.62.0",
+    "@tanstack/react-table": "8.20.5",
+    "@tanstack/react-virtual": "3.10.9",
+    "@testing-library/dom": "10.4.0",
+    "@testing-library/react": "16.1.0",
+    "@types/node": "20.17.9",
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "@vitejs/plugin-react": "4.3.4",
+    "electron": "33.2.1",
+    "electron-vite": "2.3.0",
+    "eslint": "9.16.0",
+    "eslint-plugin-react-hooks": "5.1.0",
+    "globals": "15.13.0",
+    "jsdom": "25.0.1",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "typescript": "5.7.2",
+    "typescript-eslint": "8.18.0",
+    "vite": "5.4.11",
+    "vitest": "2.1.8",
+    "zod": "3.23.8",
+    "zustand": "5.0.2"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["electron", "esbuild", "koffi"]
+  }
+}

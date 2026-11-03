@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": { "lib": ["ES2022", "DOM", "DOM.Iterable"], "jsx": "react-jsx", "types": [] },
+  "include": ["src/renderer/**/*", "src/shared/**/*", "src/main/lore/MockBackend.ts", "src/main/lore/mock/**/*", "src/main/lore/LoreBackend.ts", "src/main/handlers.ts", "src/main/bus.ts", "src/main/runner.ts", "src/main/lore/commands.ts", "src/main/lore/instrument.ts", "tests/renderer/**/*"]
+}

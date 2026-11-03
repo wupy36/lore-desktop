@@ -1,0 +1,113 @@
+// The single seam between the app and Lore. Lore is pre-1.0; when its API
+// changes, only implementations of this interface change.
+import type {
+  AuthInfo,
+  Branch,
+  DiffResult,
+  FileEntry,
+  FileRevision,
+  Instance,
+  Lock,
+  RemoteRepo,
+  RepoInfo,
+  Revision,
+  StatusResult,
+} from "@shared/types";
+
+export type BackendKind = "sdk" | "cli" | "mock";
+
+export interface Progress {
+  current: number;
+  total: number | null;
+  unit: "files" | "bytes" | "fragments" | "items";
+  label?: string;
+}
+
+/** Per-call context. `signal` aborts the op where the backend can (CLI: kill
+ * the child; SDK: Lore's C API has no per-call cancel, so the result is
+ * dropped). `progress` feeds the transfer queue. */
+export interface OpContext {
+  signal: AbortSignal;
+  progress(p: Progress): void;
+}
+
+export interface StatusOptions {
+  /** Walk the filesystem and reconcile dirty flags (`status --scan`). */
+  scan?: boolean;
+  /** Re-verify already-dirty files only (`status --check-dirty`). */
+  checkDirty?: boolean;
+  paths?: string[];
+}
+
+export interface SyncOptions {
+  revision?: string; // revision identifier, e.g. `main@LATEST`
+  reset?: boolean;
+  viewFile?: string;
+  rootFiles?: string[];
+}
+
+export interface CloneOptions {
+  url: string;
+  path: string;
+  branch?: string;
+  viewFile?: string;
+}
+
+export interface LoreBackend {
+  readonly kind: BackendKind;
+
+  openRepository(path: string): Promise<RepoInfo>;
+  currentRepository(): RepoInfo | null;
+  cloneRepository(opts: CloneOptions, ctx: OpContext): Promise<RepoInfo>;
+  listInstances(): Promise<Instance[]>;
+  listRemoteRepositories(remoteUrl: string): Promise<RemoteRepo[]>;
+
+  status(opts: StatusOptions, ctx?: OpContext): Promise<StatusResult>;
+  /** All files in the working tree (synced + changed), for the file table. */
+  listFiles(): Promise<FileEntry[]>;
+  stage(paths: string[], ctx?: OpContext): Promise<void>;
+  unstage(paths: string[]): Promise<void>;
+  reset(paths: string[], opts?: { purge?: boolean }): Promise<void>;
+
+  commit(message: string, ctx?: OpContext): Promise<Revision>;
+  push(branch: string | undefined, ctx: OpContext): Promise<void>;
+  sync(opts: SyncOptions, ctx: OpContext): Promise<void>;
+  history(opts: { branch?: string; length: number }): Promise<Revision[]>;
+  fileHistory(path: string, length: number): Promise<FileRevision[]>;
+  diff(opts: { path: string; source?: string; target?: string }): Promise<DiffResult>;
+
+  listBranches(): Promise<Branch[]>;
+  switchBranch(name: string, opts: { reset?: boolean }, ctx: OpContext): Promise<void>;
+  createBranch(name: string): Promise<Branch>;
+
+  lockAcquire(paths: string[]): Promise<Lock[]>;
+  lockRelease(paths: string[]): Promise<void>;
+  lockQuery(q: { branch?: string; owner?: string; path?: string }): Promise<Lock[]>;
+
+  authInfo(): Promise<AuthInfo>;
+
+  getView(): Promise<string[]>;
+  /** Write the view filter and re-materialize (`sync --view <file>`). */
+  applyView(rules: string[], ctx: OpContext): Promise<void>;
+
+  dispose(): Promise<void>;
+}
+
+export class LoreError extends Error {
+  constructor(
+    message: string,
+    readonly code: number | null = null,
+  ) {
+    super(message);
+    this.name = "LoreError";
+  }
+}
+
+export class CancelledError extends Error {
+  constructor() {
+    super("Operation cancelled");
+    this.name = "CancelledError";
+  }
+}
+
+export const noopContext: OpContext = { signal: new AbortController().signal, progress: () => {} };
