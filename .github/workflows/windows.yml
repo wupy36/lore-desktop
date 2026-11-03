@@ -1,0 +1,107 @@
+# Builds the Windows installer + portable exe on a real Windows runner, runs the
+# Phase 0 SDK spike against a local Lore demo server, and smoke-tests the
+# packaged app. Artifacts: LoreDesktop-<ver>-setup-x64.exe, -portable-x64.exe.
+name: windows
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck, lint, test
+        run: |
+          pnpm typecheck
+          pnpm lint
+          pnpm test
+
+      - name: Install Lore CLI + server (demo)
+        shell: pwsh
+        env:
+          LORE_INSTALL_DIR: ${{ runner.temp }}\lore-bin
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          irm https://raw.githubusercontent.com/EpicGames/lore/main/scripts/install.ps1 | iex
+          $env:LORE_SERVER = 1
+          irm https://raw.githubusercontent.com/EpicGames/lore/main/scripts/install.ps1 | iex
+          "$env:LORE_INSTALL_DIR" | Out-File -FilePath $env:GITHUB_PATH -Append
+          # Same as install.ps1 -Demo, but without blocking the job.
+          $log = Join-Path $env:RUNNER_TEMP 'loreserver.log'
+          Start-Process -FilePath (Join-Path $env:LORE_INSTALL_DIR 'loreserver.exe') -WindowStyle Hidden -RedirectStandardOutput $log -RedirectStandardError "$log.err"
+          for ($i = 0; $i -lt 40; $i++) {
+            try { Invoke-WebRequest -Uri http://127.0.0.1:41339/health_check -UseBasicParsing -TimeoutSec 2 | Out-Null; Write-Host "loreserver healthy"; exit 0 } catch { Start-Sleep -Milliseconds 500 }
+          }
+          Get-Content -Tail 40 $log, "$log.err"
+          exit 1
+
+      - name: Phase 0 spike (SDK in Electron main on Windows)
+        working-directory: spike
+        run: |
+          npm ci --no-audit --no-fund
+          npx electron sdk-spike.mjs
+          npx electron sdk-spike-online.mjs lore://127.0.0.1:41337
+
+      - name: Package (NSIS installer + portable)
+        run: pnpm dist:win:native
+
+      - name: Smoke-test packaged app (mock)
+        run: node scripts/smoke-mock.cjs "--exe=dist/win-unpacked/Lore Desktop.exe" smoke-mock.png
+
+      - name: Smoke-test packaged app (SDK, real repository)
+        shell: pwsh
+        run: |
+          $repo = Join-Path $env:RUNNER_TEMP 'DesktopDemo'
+          New-Item -ItemType Directory -Force $repo | Out-Null
+          Push-Location $repo
+          lore --non-interactive repository create lore://127.0.0.1:41337/DesktopDemo
+          New-Item -ItemType Directory Source | Out-Null
+          Set-Content Source/main.cpp 'int main(){}'
+          lore --non-interactive stage --scan .
+          lore --non-interactive commit "Initial import"
+          lore --non-interactive push
+          Set-Content Source/main.cpp 'int main(){return 1;}'
+          Set-Content Source/new.h 'new'
+          lore --non-interactive stage Source/main.cpp
+          Pop-Location
+          node scripts/smoke-sdk.cjs "--exe=dist/win-unpacked/Lore Desktop.exe" $repo smoke-sdk.png | Tee-Object smoke-sdk.json
+          $r = Get-Content smoke-sdk.json -Raw | ConvertFrom-Json
+          if (-not ($r.rows | Where-Object { $_[0] -eq 'Source/main.cpp' -and $_[1] -eq 'staged' })) { throw "main.cpp not shown as staged" }
+          if (-not ($r.rows | Where-Object { $_[0] -eq 'Source/new.h' -and $_[1] -eq 'untracked' })) { throw "new.h not shown as untracked" }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LoreDesktop-windows-x64
+          path: |
+            dist/*.exe
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-screenshots
+          path: |
+            smoke-*.png
+            smoke-sdk.json
+          if-no-files-found: ignore
