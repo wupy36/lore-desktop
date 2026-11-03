@@ -100,8 +100,12 @@ export class SdkBackend implements LoreBackend {
     return { branch: r?.branch ?? this.repo?.branch ?? "", revision: r?.revision ?? null, files, scanned: !!o.scan };
   }
 
+  /** Phase 1: changed files only (from status). Phase 2 merges the full tree listing. */
+  async listFiles(): Promise<FileEntry[]> {
+    return (await this.status({})).files;
+  }
+
   // Phase 2
-  listFiles = notYet("listFiles", 2);
   cloneRepository = notYet("clone", 2);
   listInstances = notYet("instance list", 2);
   listRemoteRepositories = notYet("repository list", 2);
