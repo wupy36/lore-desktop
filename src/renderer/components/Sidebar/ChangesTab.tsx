@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { deriveFileState, fileName, type ChangeGroup, type FileEntry } from "@shared/types";
 import { useActions } from "../../actions";
 import { useFiles, useRepo } from "../../api/queries";
-import { resolveViaCliHint } from "../cliHints";
+import { HealthCard } from "../HealthCard";
 import { groupChanges } from "../../selectors";
 import { useUi } from "../../store/ui";
 
@@ -18,7 +18,6 @@ export function ChangesTab() {
   const setMessage = useUi((s) => s.setCommitMessage);
   const openDetail = useUi((s) => s.openDetail);
   const actions = useActions();
-  const conflicts = (files ?? []).filter((f) => f.conflict);
 
   const canCommit = groups.staged.length > 0 && message.trim().length > 0;
   const commit = () => canCommit && void actions.commit(message.trim());
@@ -46,14 +45,7 @@ export function ChangesTab() {
   return (
     <>
       <div className="pane-body">
-        {conflicts.length > 0 && (
-          <div className="cli-hint">
-            {conflicts.length} file(s) in conflict. Conflict resolution is not built into this GUI yet — resolve via CLI:
-            {conflicts.slice(0, 3).map((f) => (
-              <code key={f.path}>{resolveViaCliHint(f.path)}</code>
-            ))}
-          </div>
-        )}
+        <HealthCard />
         {(Object.keys(TITLES) as ChangeGroup[]).map((g) => (
           <section key={g} aria-label={TITLES[g]}>
             <div className="group-title">

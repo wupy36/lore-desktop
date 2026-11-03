@@ -14,6 +14,9 @@ export function useHotkeys() {
       } else if (ctrl && e.shiftKey && e.key.toLowerCase() === "s") {
         e.preventDefault();
         void a.sync();
+      } else if (ctrl && !e.shiftKey && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        useUi.getState().setModal("palette");
       } else if (ctrl && e.key === ",") {
         e.preventDefault();
         useUi.getState().setModal("preferences");

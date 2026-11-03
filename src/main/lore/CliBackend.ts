@@ -49,7 +49,7 @@ export class CliBackend implements LoreBackend {
   }
 
   async openRepository(path: string): Promise<RepoInfo> {
-    this.repo = { path, name: path.split(/[\\/]/).filter(Boolean).pop() ?? path, remoteUrl: null, repositoryId: "", instanceId: "", branch: "", revision: null, revisionHash: null, aheadBy: 0, offline: false };
+    this.repo = { path, name: path.split(/[\\/]/).filter(Boolean).pop() ?? path, remoteUrl: null, repositoryId: "", instanceId: "", branch: "", revision: null, revisionHash: null, aheadBy: 0, behindBy: 0, mergePending: false, offline: false };
     return { ...this.repo };
   }
 
@@ -78,6 +78,12 @@ export class CliBackend implements LoreBackend {
   listBranches = notYet("branch list");
   switchBranch = notYet("branch switch");
   createBranch = notYet("branch create");
+  branchAction = notYet("branch protect/unprotect/archive");
+  revisionDetail = notYet("revision info");
+  amend = notYet("revision amend");
+  authLogin = notYet("auth login");
+  authLogout = notYet("auth logout");
+  setIdentity(): void {}
   lockAcquire = notYet("lock acquire");
   lockRelease = notYet("lock release");
   lockQuery = notYet("lock query");

@@ -4,6 +4,8 @@ import { z } from "zod";
 import {
   AboutInfo,
   AuthInfo,
+  BranchAction,
+  RevisionDetail,
   Branch,
   DiffResult,
   FileEntry,
@@ -50,6 +52,8 @@ export const contract = {
   "rev:commit": { input: z.object({ message: z.string().min(1) }), output: Revision },
   "rev:push": { input: z.object({ branch: z.string().optional() }), output: OpHandle },
   "rev:sync": { input: z.object({ revision: z.string().optional(), reset: z.boolean().optional(), viewFile: z.string().optional(), rootFiles: z.array(z.string()).optional() }), output: OpHandle },
+  "rev:info": { input: z.object({ revision: z.string() }), output: RevisionDetail },
+  "rev:amend": { input: z.object({ message: z.string().min(1) }), output: z.object({ ok: z.literal(true) }) },
   "rev:history": { input: z.object({ branch: z.string().optional(), length: z.number().int().positive().max(5000) }), output: z.array(Revision) },
   "file:history": { input: z.object({ path: z.string(), length: z.number().int().positive().max(1000) }), output: z.array(FileRevision) },
   "file:diff": { input: z.object({ path: z.string(), source: z.string().optional(), target: z.string().optional() }), output: DiffResult },
@@ -57,13 +61,17 @@ export const contract = {
 
   "branch:list": { input: z.void(), output: z.array(Branch) },
   "branch:switch": { input: z.object({ name: z.string(), reset: z.boolean().optional() }), output: OpHandle },
-  "branch:create": { input: z.object({ name: z.string().min(1) }), output: Branch },
+  "branch:create": { input: z.object({ name: z.string().regex(/^[\w./-]+$/, "letters, digits, . _ - / only") }), output: Branch },
+  "branch:action": { input: z.object({ name: z.string().min(1), action: BranchAction }), output: z.object({ ok: z.literal(true) }) },
 
   "lock:acquire": { input: Paths, output: z.array(Lock) },
   "lock:release": { input: Paths, output: Ok },
   "lock:query": { input: z.object({ branch: z.string().optional(), owner: z.string().optional(), path: z.string().optional() }), output: z.array(Lock) },
 
   "auth:info": { input: z.void(), output: AuthInfo },
+  /** Device/browser login against the open repository's server. Progress (URL, code) arrives as `auth:prompt`. */
+  "auth:login": { input: z.void(), output: AuthInfo },
+  "auth:logout": { input: z.void(), output: AuthInfo },
 
   "view:get": { input: z.void(), output: z.object({ rules: z.array(z.string()) }) },
   "view:apply": { input: z.object({ rules: z.array(z.string()) }), output: OpHandle },
@@ -92,8 +100,10 @@ export const events = {
   /** Workspace state changed (after a mutating op or an FS-watch trigger). */
   "ws:changed": z.object({ reason: z.string() }),
   "prefs:changed": Prefs,
+  /** Interactive login: open `url` (and show `code`) to finish signing in. */
+  "auth:prompt": z.object({ url: z.string(), code: z.string() }),
   /** Menu-bar commands that open renderer screens. */
-  "ui:command": z.object({ command: z.enum(["preferences", "about", "createRepository", "openRepository"]) }),
+  "ui:command": z.object({ command: z.enum(["preferences", "about", "createRepository", "openRepository", "account", "palette"]) }),
 } as const;
 export type EventName = keyof typeof events;
 export type EventPayload<E extends EventName> = z.output<(typeof events)[E]>;

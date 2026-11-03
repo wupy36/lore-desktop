@@ -66,10 +66,20 @@ export const useFileHistory = (path: string | null) => {
   const api = useApi();
   return useQuery({ queryKey: qk.fileHistory(path ?? ""), queryFn: () => api.invoke("file:history", { path: path as string, length: 100 }), enabled: !!path });
 };
-export const useDiff = (path: string | null, enabled: boolean, source?: string) => {
+export const useDiff = (path: string | null, enabled: boolean, source?: string, target?: string) => {
   const api = useApi();
-  return useQuery({ queryKey: qk.diff(path ?? "", source), queryFn: () => api.invoke("file:diff", { path: path as string, source }), enabled: !!path && enabled });
+  return useQuery({ queryKey: qk.diff(path ?? "", source, target), queryFn: () => api.invoke("file:diff", { path: path as string, source, target }), enabled: !!path && enabled });
 };
+export const useRevisionDetail = (hash: string | null) => {
+  const api = useApi();
+  return useQuery({ queryKey: ["revInfo", hash ?? ""], queryFn: () => api.invoke("rev:info", { revision: hash as string }), enabled: !!hash, staleTime: Infinity });
+};
+export const useAuth = (enabled = true) => {
+  const api = useApi();
+  const repo = useRepo().data;
+  return useQuery({ queryKey: qk.auth, queryFn: () => api.invoke("auth:info", undefined), enabled: enabled && !!repo, staleTime: 60_000, retry: false });
+};
+
 export const useLocks = () => {
   const api = useApi();
   return useQuery({ queryKey: qk.locks, queryFn: () => api.invoke("lock:query", {}), enabled: useHasRepo() });
@@ -87,6 +97,7 @@ export function useBusBridge() {
       api.on("log", pushLog),
       api.on("transfer", upsertTransfer),
       api.on("prefs:changed", (p) => qc.setQueryData<Prefs>(qk.prefs, p)),
+      api.on("auth:prompt", (p) => useUi.getState().setAuthPrompt(p)),
       api.on("ui:command", ({ command }) => {
         if (command === "openRepository") void api.invoke("repo:pick", undefined);
         else useUi.getState().setModal(command);
@@ -94,7 +105,7 @@ export function useBusBridge() {
       api.on("ws:changed", () => {
         if (timer) clearTimeout(timer);
         timer = setTimeout(() => {
-          for (const key of [qk.files, qk.repo, ["recent"], qk.branches, qk.locks, ["history"], ["fileHistory"], ["diff"]]) void qc.invalidateQueries({ queryKey: key });
+          for (const key of [qk.files, qk.repo, ["recent"], qk.auth, qk.branches, qk.locks, ["history"], ["fileHistory"], ["diff"]]) void qc.invalidateQueries({ queryKey: key });
         }, 100);
       }),
     ];

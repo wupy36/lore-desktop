@@ -11,7 +11,9 @@ import type {
   RemoteRepo,
   RepoInfo,
   Revision,
+  BranchAction,
   MaintenanceOp,
+  RevisionDetail,
   StatusResult,
 } from "@shared/types";
 
@@ -87,16 +89,27 @@ export interface LoreBackend {
   history(opts: { branch?: string; length: number }): Promise<Revision[]>;
   fileHistory(path: string, length: number): Promise<FileRevision[]>;
   diff(opts: { path: string; source?: string; target?: string }): Promise<DiffResult>;
+  /** Revision header, metadata and changed files (`lore revision info --metadata --delta`). */
+  revisionDetail(revision: string): Promise<RevisionDetail>;
+  /** Change the latest commit's message (`lore revision amend`). */
+  amend(message: string): Promise<void>;
 
   listBranches(): Promise<Branch[]>;
   switchBranch(name: string, opts: { reset?: boolean }, ctx: OpContext): Promise<void>;
+  /** Creates the branch at the current revision AND switches to it (Lore semantics). */
   createBranch(name: string): Promise<Branch>;
+  branchAction(name: string, action: BranchAction): Promise<void>;
 
   lockAcquire(paths: string[]): Promise<Lock[]>;
   lockRelease(paths: string[]): Promise<void>;
   lockQuery(q: { branch?: string; owner?: string; path?: string }): Promise<Lock[]>;
 
   authInfo(): Promise<AuthInfo>;
+  /** Browser/device login against the repository's server; `onPrompt` receives the URL + code to show. */
+  authLogin(onPrompt: (p: { url: string; code: string }) => void): Promise<AuthInfo>;
+  authLogout(): Promise<AuthInfo>;
+  /** Commit identity override (`--identity`) for subsequent calls; null = use the repository config. */
+  setIdentity(identity: string | null): void;
 
   getView(): Promise<string[]>;
   /** Write the view filter and re-materialize (`sync --view <file>`). */

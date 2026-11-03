@@ -2,7 +2,7 @@
 
 An open-source, essentials-only desktop GUI for the [Lore](https://github.com/EpicGames/lore) version control system. Dense, dark-first, multi-pane, table-centric — layout inspired by P4V, semantics strictly Lore's.
 
-> Status: Phase 2 (core loop). On a real repository (SDK backend): open/clone, full file tree, status with FS-watcher refresh, stage/unstage/reset, commit, push, sync with progress. History/diff/branches (Phase 3) and locks/views (Phase 4) run on mock data only. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+> Status: Phase 3 + Step B. On a real repository (SDK backend): open/clone/create, full file tree, status with FS-watcher refresh, stage/unstage/reset, commit, push, sync, history, file history, text/binary diff, branches (create/switch/protect/archive), account & commit identity, working-copy health, command palette. Locks and views (Phase 4) run on mock data only. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Install on Windows
 
@@ -57,6 +57,7 @@ node scripts/smoke-sdk-loop.cjs /path/to/repo loop.png   # edit -> watcher -> st
 | Ctrl+O | Open repository |
 | Ctrl+Shift+N | New repository |
 | Ctrl+, | Preferences |
+| Ctrl+K | Command palette |
 | Ctrl+Enter | Commit (in message box) |
 | ↑/↓, PgUp/PgDn, Home/End (+Shift) | Move / extend selection in file table |
 | Ctrl+A | Select all |

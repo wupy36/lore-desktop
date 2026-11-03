@@ -58,7 +58,8 @@ export const cli = {
   ],
   repoInfo: (): Argv => ["repository", "info"],
   repoCreate: (o: { name: string; remoteUrl?: string }): Argv => (o.remoteUrl ? ["repository", "create", `${o.remoteUrl.replace(/\/+$/, "")}/${o.name}`] : ["--offline", "repository", "create", o.name]),
-  maintenance: (op: "verify" | "gc" | "flush" | "prune"): Argv => ({ verify: ["repository", "verify", "state"], gc: ["repository", "gc"], flush: ["repository", "flush"], prune: ["repository", "instance", "prune"] })[op],
+  maintenance: (op: "verify" | "gc" | "flush" | "prune" | "updatePath"): Argv =>
+    ({ verify: ["repository", "verify", "state"], gc: ["repository", "gc"], flush: ["repository", "flush"], prune: ["repository", "instance", "prune"], updatePath: ["repository", "update-path"] })[op],
   fileWrite: (path: string, output: string, revision?: string): Argv => ["file", "write", "--path", path, ...(revision ? ["--revision", revision] : []), "--output", output],
   repoList: (remoteUrl: string): Argv => ["repository", "list", remoteUrl],
   instanceList: (): Argv => ["repository", "instance", "list"],
@@ -69,4 +70,6 @@ export const resolveViaCli = {
   mergeMine: (path: string): string => formatArgv(["branch", "merge", "resolve", "mine", path]),
   mergeTheirs: (path: string): string => formatArgv(["branch", "merge", "resolve", "theirs", path]),
   mergeAbort: (): string => formatArgv(["branch", "merge", "abort"]),
+  /** Finish a merge left pending by sync: resolve conflicts, then commit the merge. */
+  mergeCommit: (): string => formatArgv(["commit", "Merge"]),
 };

@@ -36,6 +36,10 @@ export const RepoInfo = z.object({
   revisionHash: z.string().nullable(),
   /** Local commits not yet pushed to the remote branch. */
   aheadBy: z.number().int().nonnegative(),
+  /** Remote revisions not yet synced (remote latest − local latest when the remote is ahead). */
+  behindBy: z.number().int().nonnegative().default(0),
+  /** A merge (e.g. from sync) is in progress and must be committed or aborted. */
+  mergePending: z.boolean().default(false),
   offline: z.boolean(),
 });
 export type RepoInfo = z.infer<typeof RepoInfo>;
@@ -50,9 +54,15 @@ export const Branch = z.object({
   name: z.string(),
   id: z.string(),
   latest: z.number().int().nullable(),
+  /** Latest revision hash (local view); null when unknown. */
+  latestHash: z.string().nullable().default(null),
   current: z.boolean(),
-  protected: z.boolean(),
+  /** null = unknown (Lore's branch list does not report protection). */
+  protected: z.boolean().nullable(),
   archived: z.boolean(),
+  /** Where the branch exists: only local (never pushed), only on the remote, or both. */
+  where: z.enum(["local", "remote", "both"]).default("both"),
+  creator: z.string().nullable().default(null),
 });
 export type Branch = z.infer<typeof Branch>;
 
@@ -86,7 +96,18 @@ export type DiffResult = z.infer<typeof DiffResult>;
 export const Lock = z.object({ path: z.string(), owner: z.string(), branch: z.string(), acquiredAt: z.number() });
 export type Lock = z.infer<typeof Lock>;
 
-export const AuthInfo = z.object({ remote: z.string().nullable(), identity: z.string().nullable(), loggedIn: z.boolean() });
+export const AuthInfo = z.object({
+  remote: z.string().nullable(),
+  /** Identity recorded on commits (preference override, else .lore/config.toml `identity`). */
+  identity: z.string().nullable(),
+  identitySource: z.enum(["preference", "repository", "none"]).default("none"),
+  /** Server has an auth endpoint (false for e.g. the demo server). */
+  authSupported: z.boolean().default(false),
+  loggedIn: z.boolean(),
+  user: z.object({ id: z.string(), name: z.string() }).nullable().default(null),
+  /** Human-readable status when the server can't be asked. */
+  note: z.string().nullable().default(null),
+});
 export type AuthInfo = z.infer<typeof AuthInfo>;
 
 export const StatusResult = z.object({
@@ -188,13 +209,24 @@ export const Prefs = z.object({
   confirmReset: z.boolean().default(true),
   /** Toolbar Sync discards local modifications to files the incoming revision changes (`sync --reset`). */
   syncDiscardLocal: z.boolean().default(false),
+  /** Commit identity override passed to every Lore call (`--identity`). Empty = use .lore/config.toml. */
+  identity: z.string().max(320).default(""),
   /** Override for the Lore native library (LORE_LIB_PATH). Applies on next start. */
   loreLibPath: z.string().max(2000).default(""),
 });
 export type Prefs = z.infer<typeof Prefs>;
 export const defaultPrefs = (): Prefs => Prefs.parse({});
 
-export const MaintenanceOp = z.enum(["verify", "gc", "flush", "prune"]);
+export const MaintenanceOp = z.enum(["verify", "gc", "flush", "prune", "updatePath"]);
+
+export const RevisionDetail = Revision.extend({
+  files: z.array(z.object({ path: z.string(), action: z.enum(["none", "add", "modify", "delete", "move", "copy"]), size: z.number(), fromPath: z.string().nullable() })),
+  metadata: z.record(z.string(), z.string()),
+});
+export type RevisionDetail = z.infer<typeof RevisionDetail>;
+
+export const BranchAction = z.enum(["protect", "unprotect", "archive"]);
+export type BranchAction = z.infer<typeof BranchAction>;
 export type MaintenanceOp = z.infer<typeof MaintenanceOp>;
 
 export const AboutInfo = z.object({

@@ -132,10 +132,10 @@ export function generateMockRepo(seed = 1337): MockRepoData {
   }
 
   const branches: Branch[] = [
-    { name: "main", id: hex(rnd, 32), latest: revCount, current: true, protected: true, archived: false },
-    { name: "dev", id: hex(rnd, 32), latest: 37, current: false, protected: false, archived: false },
-    { name: "feature/grapple-hook", id: hex(rnd, 32), latest: 12, current: false, protected: false, archived: false },
-    { name: "release/0.3", id: hex(rnd, 32), latest: 4, current: false, protected: true, archived: false },
+    { name: "main", id: hex(rnd, 32), latest: revCount, latestHash: revisions[0]?.hash ?? null, current: true, protected: true, archived: false, where: "both", creator: "ada@studio.dev" },
+    { name: "dev", id: hex(rnd, 32), latest: 37, latestHash: null, current: false, protected: false, archived: false, where: "both", creator: "ben@studio.dev" },
+    { name: "feature/grapple-hook", id: hex(rnd, 32), latest: 12, latestHash: null, current: false, protected: false, archived: false, where: "local", creator: "me@studio.dev" },
+    { name: "release/0.3", id: hex(rnd, 32), latest: 4, latestHash: null, current: false, protected: true, archived: false, where: "remote", creator: "chen@studio.dev" },
   ];
 
   const remotes: RemoteRepo[] = [

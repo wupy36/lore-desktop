@@ -172,6 +172,35 @@ Observations: Electron 33 warns `--use-openssl-ca is not supported` when that `N
 
 ## 7. Phase status
 
+### Phase 3 (history, diff, branches) + Step B (account, health, palette) — done
+
+**What the SDK actually returns (verified by probing, not assumed):**
+- **History events.** `revisionHistory` / `fileHistory` / `revisionInfo` emit a header event followed by `METADATA` events for that entry: `branch` (a branch *id*), `timestamp` (ms), `message`, and `created-by` / `committed-by` when an identity was set. The header itself has no author or message. `revisionInfo --delta` adds `REVISION_INFO_DELTA` per changed path.
+- **Authors.** On an unauthenticated server commits record no author unless an identity is passed. The global `identity` arg (`--identity`) sets `committed-by`. The app exposes it as a preference (Account dialog).
+- **`file diff`** returns a unified patch, defaulting to current revision → working tree. Lore diffs *any* file as text: a `.uasset` without NUL bytes yields a multi-hundred-KB patch. So known binary extensions never request a patch. Patches with NUL bytes or over 2 MB are shown as binary, with size and hash for both sides from `file info` (`--local` for the working copy) and the external-diff button.
+- **`branch list`** reports each branch twice, once per location (0 = local, 1 = remote), so the app merges them by id and shows *not pushed* / *remote*. It doesn't report protection (shown as unknown) or revision numbers for other branches.
+- **`branch create`** creates the branch at the current revision **and switches to it** (quickstart: "Create a branch … and switch your working tree to it"). The UI labels the button *Create & switch*.
+- **Auth.** On a server without an auth endpoint (the demo server), `auth user info` fails with error 9, "authentication requires a configured auth endpoint". The Account dialog reports this as "server has no authentication", not as an error. Login uses `authLoginInteractive({ noBrowser: true })`; the `AUTH_URL` event (URL + user code) is shown with a link. **Not exercised against an authenticating server.**
+- **Health** comes from the status revision event: `isRemoteAhead` + revision numbers → *N to sync*; `isLocalAhead` → *N to push*; both → *diverged*; non-zero `revisionMerged` → merge pending. Conflict resolution stays "resolve via CLI" with the exact commands (non-goal).
+
+**UI**
+- **History tab** (sidebar): virtualized revisions with number, author, date and message. Selecting one shows its changed files; clicking a file diffs it against the parent in the detail pane. Row menu: copy hash/identifier, *Amend message* (latest, unpushed only).
+- **Detail pane:** a file-history row click diffs the working copy against that revision. The diff header says what is compared, with *vs working copy* and *External tool* buttons.
+- **Branches** (Repository tab): *Create & switch*; double-click to switch; row menu with switch, protect, unprotect, archive, copy name; *not pushed* / *remote* badges.
+- **Account** (toolbar 👤): commit identity and where it comes from, server, sign-in state or note, Sign in / Sign out, identity override.
+- **Health card** at the top of the Changes tab: offline, N to sync (Sync), N to push (Push), diverged, merge pending / conflicts with CLI commands. Quiet when in sync.
+- **Command palette** (Ctrl+K): every toolbar, menu and Manage action plus one *Switch to branch X* per branch, with fuzzy match, the CLI equivalent and shortcuts. Built from the same actions as the toolbar (`src/renderer/commands.ts`), so they can't drift.
+- **Repository → Update stored path** (`lore repository update-path`) for moved workspaces.
+
+**Verified**
+- `pnpm test`: **87**. `pnpm test:it` against real Lore: **17**, covering history messages, timestamps, branch names and authors via identity; file history; text diff vs working tree and vs `main@1`; binary diff metadata; revision detail; amend; branch create (switches), list (local/both), switch, protect/unprotect/archive; account no-auth note and identity override; behind-by-1 after the other instance pushes, then sync.
+- `scripts/smoke-phase3.cjs` in the real app (SDK backend): History → revision → file → inline diff; file history; account dialog; Create & switch, then palette → *Switch to branch main*. Added to Windows CI against the packaged exe.
+
+**Known gaps**
+- **Last revision column** is still empty on real repositories: no listing call returns per-file revision numbers, and per-file `file history` for 10k files is too slow. The detail pane shows it for the selected file.
+- **Branch diff, file audit, revision restore and find** are classified "planned" in `sdkCoverage.ts`.
+- **Interactive login** is untested against a real auth endpoint.
+
 ### Step A (from the LoreGUI comparison) — done
 
 - **Preferences** (File → Preferences, Ctrl+,, toolbar ⚙). Options: theme (dark/light/system), font size, row density, reopen last repository, auto-refresh (watcher on/off), confirm before Reset, Sync discards local modifications (`sync --reset`), external diff tool, Lore library path. Stored in `userData/settings.json` under `prefs`, validated with zod; a bad value resets prefs only, never the recent-repository list.

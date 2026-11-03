@@ -93,6 +93,8 @@ jobs:
           if (-not ($r.rows | Where-Object { $_[0] -eq 'Source/new.h' -and $_[1] -eq 'untracked' })) { throw "new.h not shown as untracked" }
           # Core loop through the UI: watcher -> stage -> commit -> push.
           node scripts/smoke-sdk-loop.cjs "--exe=dist/win-unpacked/Lore Desktop.exe" $repo smoke-sdk-loop.png
+          # History -> diff, file history, account, branch create/switch, command palette.
+          node scripts/smoke-phase3.cjs "--exe=dist/win-unpacked/Lore Desktop.exe" $repo .
 
       - uses: actions/upload-artifact@v6
         with:
@@ -107,5 +109,6 @@ jobs:
           name: smoke-screenshots
           path: |
             smoke-*.png
+            phase3-*.png
             smoke-sdk.json
           if-no-files-found: ignore

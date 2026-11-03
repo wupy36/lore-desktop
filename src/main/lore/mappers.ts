@@ -13,7 +13,7 @@ type SyncProgressData = FfiData<LoreEventTag.REVISION_SYNC_PROGRESS>;
 type PushProgressData = FfiData<LoreEventTag.BRANCH_PUSH_FRAGMENT_PROGRESS>;
 type CommitProgressData = FfiData<LoreEventTag.REVISION_COMMIT_PROGRESS>;
 type CloneProgressData = FfiData<LoreEventTag.REPOSITORY_CLONE_PROGRESS>;
-import { isBinaryPath, type FileAction, type FileEntry } from "@shared/types";
+import { isBinaryPath, type FileAction, type FileEntry, type Revision } from "@shared/types";
 import type { Progress } from "./LoreBackend";
 
 export function mapAction(a: LoreFileAction, dirtyOrStaged: boolean): FileAction {
@@ -55,6 +55,8 @@ export function mapStatusFile(d: StatusFileData): FileEntry | null {
 
 export interface StatusRevision {
   repositoryId: string;
+  behindBy: number;
+  mergePending: boolean;
   branch: string;
   revision: number;
   revisionHash: string;
@@ -72,8 +74,11 @@ export function mapStatusRevision(d: StatusRevisionData): StatusRevision {
   // Ahead count is only meaningful when the remote was reachable and the branch exists there;
   // a branch never pushed is "ahead" by all of its local revisions.
   const aheadBy = !d.isLocalAhead ? 0 : remoteAvailable && d.remoteBranchExist ? Math.max(1, local - remote) : Math.max(1, local);
+  const behindBy = d.isRemoteAhead && remoteAvailable ? Math.max(1, remote - local) : 0;
   return {
     repositoryId: d.repository.toString(),
+    behindBy,
+    mergePending: !/^0*$/.test(d.revisionMerged.toString()),
     branch: String(d.branchName),
     revision: Number(d.revisionNumber),
     revisionHash: d.revision.toString(),
@@ -129,4 +134,34 @@ export function mergeTreeAndStatus(tree: readonly TreeFile[], changed: readonly 
   }
   for (const c of byPath.values()) out.push(c);
   return out;
+}
+
+/** METADATA values are tagged unions ({ tag, tagName, data }); render any of them as text. */
+export function metaValue(v: unknown): string {
+  const d = (v as { data?: unknown } | null)?.data ?? v;
+  if (d === null || d === undefined) return "";
+  if (typeof d === "object" && typeof (d as { toString?: unknown }).toString === "function") {
+    const s = String(d);
+    if (s !== "[object Object]") return s;
+    return JSON.stringify(d);
+  }
+  return String(d);
+}
+
+/** Revision DTO from a history/info header + its metadata (`message`, `timestamp`, `branch`, `committed-by`, `created-by`). */
+export function revisionFromMeta(
+  head: { number: number; hash: string; parents: string[] },
+  meta: Record<string, string>,
+  branchNames: ReadonlyMap<string, string>,
+): Revision {
+  const ts = Number(meta.timestamp);
+  return {
+    number: head.number,
+    hash: head.hash,
+    parents: head.parents,
+    branch: (meta.branch && branchNames.get(meta.branch)) || meta.branch || "",
+    author: meta["committed-by"] || meta["created-by"] || null,
+    timestamp: Number.isFinite(ts) ? ts : 0,
+    message: meta.message ?? "",
+  };
 }

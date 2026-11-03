@@ -34,8 +34,8 @@ export function createHandlers({ backend: b, runner, bus, info, openExternalDiff
   const prefs = prefsDep ?? { get: () => memPrefs, set: (p: Partial<Prefs>) => (memPrefs = Prefs.parse({ ...memPrefs, ...p })) };
   /** Ops that write the working tree run with the watcher paused (their writes are not user edits). */
   const writesTree =
-    <A extends unknown[]>(fn: (...a: A) => Promise<unknown>) =>
-    async (...a: A) => {
+    <A extends unknown[], R>(fn: (...a: A) => Promise<R>) =>
+    async (...a: A): Promise<R> => {
       watcher?.pause();
       try {
         return await fn(...a);
@@ -98,6 +98,12 @@ export function createHandlers({ backend: b, runner, bus, info, openExternalDiff
     "rev:sync": async (o) => ({ opId: runner.start("sync", `Sync ${o.revision ?? "latest"}`, writesTree((ctx) => b.sync(o, ctx)), { unit: "files", cancellable: b.canCancel }) }),
     "rev:history": (o) => b.history(o),
     "file:history": ({ path, length }) => b.fileHistory(path, length),
+    "rev:info": ({ revision }) => b.revisionDetail(revision),
+    "rev:amend": async ({ message }) => {
+      await b.amend(message);
+      changed("amend");
+      return { ok: true } as const;
+    },
     "file:diff": (o) => b.diff(o),
     "file:openExternalDiff": async (o) => {
       if (!openExternalDiff) throw new Error("No external diff tool configured");
@@ -108,9 +114,15 @@ export function createHandlers({ backend: b, runner, bus, info, openExternalDiff
     "branch:list": () => b.listBranches(),
     "branch:switch": async ({ name, reset }) => ({ opId: runner.start("switch", `Switch to ${name}`, writesTree((ctx) => b.switchBranch(name, { reset }, ctx)), { unit: "files", cancellable: b.canCancel }) }),
     "branch:create": async ({ name }) => {
-      const br = await b.createBranch(name);
+      // Lore switches to the new branch, which rewrites nothing on disk but moves the tree anchor.
+      const br = await writesTree(() => b.createBranch(name))();
       changed("branch");
       return br;
+    },
+    "branch:action": async ({ name, action }) => {
+      await b.branchAction(name, action);
+      changed("branch");
+      return { ok: true } as const;
     },
 
     "lock:acquire": async ({ paths }) => {
@@ -126,6 +138,8 @@ export function createHandlers({ backend: b, runner, bus, info, openExternalDiff
     "lock:query": (q) => b.lockQuery(q),
 
     "auth:info": () => b.authInfo(),
+    "auth:login": () => b.authLogin((p) => bus.emit("auth:prompt", p)),
+    "auth:logout": () => b.authLogout(),
 
     "view:get": async () => ({ rules: await b.getView() }),
     "view:apply": async ({ rules }) => ({ opId: runner.start("view", "Apply view filter", writesTree((ctx) => b.applyView(rules, ctx)), { unit: "files", cancellable: b.canCancel }) }),
@@ -133,6 +147,7 @@ export function createHandlers({ backend: b, runner, bus, info, openExternalDiff
     "prefs:get": async () => prefs.get(),
     "prefs:set": async (patch) => {
       const next = prefs.set(patch);
+      if ("identity" in patch) b.setIdentity(next.identity || null);
       bus.emit("prefs:changed", next);
       return next;
     },
@@ -150,7 +165,7 @@ export function createHandlers({ backend: b, runner, bus, info, openExternalDiff
     "repo:maintenance": async ({ op }) => ({
       opId: runner.start(
         `repo-${op}`,
-        { verify: "Verify repository state", gc: "Garbage collection", flush: "Flush pending writes", prune: "Prune stale instances" }[op],
+        { verify: "Verify repository state", gc: "Garbage collection", flush: "Flush pending writes", prune: "Prune stale instances", updatePath: "Update stored repository path" }[op],
         async (ctx) => {
           const summary = await b.maintenance(op, ctx);
           ctx.progress({ current: 1, total: 1, unit: "items", label: summary });

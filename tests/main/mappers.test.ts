@@ -31,13 +31,16 @@ import type { FileEntry } from "@shared/types";
 
 type Rev = Parameters<typeof mapStatusRevision>[0];
 const revEv = (p: Record<string, unknown>) =>
-  ({ repository: { toString: () => "r1" }, branchName: "main", revision: { toString: () => "ab" }, revisionNumber: 3, revisionLocalNumber: 3, revisionRemoteNumber: 3, isLocalAhead: 0, remoteAvailable: 1, remoteBranchExist: 1, ...p }) as unknown as Rev;
+  ({ repository: { toString: () => "r1" }, branchName: "main", revision: { toString: () => "ab" }, revisionNumber: 3, revisionLocalNumber: 3, revisionRemoteNumber: 3, isLocalAhead: 0, isRemoteAhead: 0, remoteAvailable: 1, remoteBranchExist: 1, revisionMerged: { toString: () => "0".repeat(64) }, ...p }) as unknown as Rev;
 
 describe("status revision → ahead count", () => {
   it("in sync", () => expect(mapStatusRevision(revEv({})).aheadBy).toBe(0));
   it("two local commits", () => expect(mapStatusRevision(revEv({ revisionLocalNumber: 5, isLocalAhead: 1 })).aheadBy).toBe(2));
   it("branch never pushed", () => expect(mapStatusRevision(revEv({ revisionLocalNumber: 2, revisionRemoteNumber: 0, isLocalAhead: 1, remoteBranchExist: 0 })).aheadBy).toBe(2));
   it("offline", () => expect(mapStatusRevision(revEv({ remoteAvailable: 0 })).remoteAvailable).toBe(false));
+  it("behind by remote revisions", () => expect(mapStatusRevision(revEv({ revisionRemoteNumber: 6, isRemoteAhead: 1 })).behindBy).toBe(3));
+  it("not behind when the remote is unreachable", () => expect(mapStatusRevision(revEv({ revisionRemoteNumber: 6, isRemoteAhead: 1, remoteAvailable: 0 })).behindBy).toBe(0));
+  it("merge pending", () => expect(mapStatusRevision(revEv({ revisionMerged: { toString: () => "ab".repeat(32) } })).mergePending).toBe(true));
 });
 
 describe("progress", () => {
@@ -61,5 +64,16 @@ describe("mergeTreeAndStatus", () => {
       ["new.txt", "add"],
       ["moved.txt", "move"],
     ]);
+  });
+});
+
+import { metaValue, revisionFromMeta } from "../../src/main/lore/mappers";
+describe("revision metadata", () => {
+  it("reads tagged metadata values and prefers committed-by", () => {
+    expect(metaValue({ tag: 6, tagName: "string", data: "hello" })).toBe("hello");
+    expect(metaValue({ tag: 5, tagName: "numeric", data: 1793730303012 })).toBe("1793730303012");
+    const r = revisionFromMeta({ number: 3, hash: "h", parents: ["p"] }, { message: "m", timestamp: "1793730303012", branch: "id1", "created-by": "a", "committed-by": "b" }, new Map([["id1", "main"]]));
+    expect(r).toEqual({ number: 3, hash: "h", parents: ["p"], branch: "main", author: "b", timestamp: 1793730303012, message: "m" });
+    expect(revisionFromMeta({ number: 1, hash: "h", parents: [] }, {}, new Map()).author).toBeNull();
   });
 });

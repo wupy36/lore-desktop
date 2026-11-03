@@ -12,7 +12,9 @@ import type {
   RemoteRepo,
   RepoInfo,
   Revision,
+  BranchAction,
   MaintenanceOp,
+  RevisionDetail,
   StatusResult,
 } from "@shared/types";
 import { generateMockRepo, mulberry32, type MockRepoData } from "./mock/fixtures";
@@ -124,6 +126,8 @@ export class MockBackend implements LoreBackend {
       revision: head?.number ?? null,
       revisionHash: head?.hash ?? null,
       aheadBy: 0,
+      behindBy: 0,
+      mergePending: false,
       offline: false,
     };
     return clone(this.repo);
@@ -142,14 +146,15 @@ export class MockBackend implements LoreBackend {
     await this.delay();
     // Demo data stays the same; just "open" the new location under the given name.
     const r = await this.openRepository(o.path);
-    this.repo = { ...r, name: o.name, remoteUrl: o.remoteUrl ? `${o.remoteUrl}/${o.name}` : null, offline: !o.remoteUrl };
-    return clone(this.repo);
+    const next: RepoInfo = { ...r, name: o.name, remoteUrl: o.remoteUrl ? `${o.remoteUrl}/${o.name}` : null, offline: !o.remoteUrl };
+    this.repo = next;
+    return clone(next);
   }
 
   async maintenance(op: MaintenanceOp, ctx: OpContext): Promise<string> {
     this.requireRepo();
     await this.simulate(ctx, "items", 100, `Repository ${op}`);
-    return { verify: "Repository state is consistent", gc: "Garbage collection complete", flush: "Pending writes flushed", prune: "No stale instances" }[op];
+    return { verify: "Repository state is consistent", gc: "Garbage collection complete", flush: "Pending writes flushed", prune: "No stale instances", updatePath: "Stored path updated" }[op];
   }
 
   async exportFile(): Promise<void> {
@@ -240,7 +245,7 @@ export class MockBackend implements LoreBackend {
       number,
       hash: Array.from({ length: 64 }, () => Math.floor(rnd() * 16).toString(16)).join(""),
       branch: repo.branch,
-      author: this.opts.identity,
+      author: this.identityOverride ?? this.opts.identity,
       timestamp: Date.now(),
       message,
       parents: head ? [head.hash] : [],
@@ -346,9 +351,40 @@ export class MockBackend implements LoreBackend {
   async createBranch(name: string): Promise<Branch> {
     await this.delay();
     if (this.data.branches.some((b) => b.name === name)) throw new LoreError(`Branch already exists: ${name}`);
-    const b: Branch = { name, id: name.padEnd(32, "0").slice(0, 32), latest: this.requireRepo().revision, current: false, protected: false, archived: false };
+    const repo = this.requireRepo();
+    // Lore's `branch create` also switches to the new branch.
+    for (const x of this.data.branches) x.current = false;
+    const b: Branch = { name, id: name.padEnd(32, "0").slice(0, 32), latest: repo.revision, latestHash: repo.revisionHash, current: true, protected: false, archived: false, where: "local", creator: this.opts.identity };
     this.data.branches.push(b);
+    Object.assign(repo, { branch: name, aheadBy: 0 });
     return clone(b);
+  }
+
+  async branchAction(name: string, action: BranchAction): Promise<void> {
+    await this.delay();
+    const b = this.data.branches.find((x) => x.name === name);
+    if (!b) throw new LoreError(`Branch not found: ${name}`);
+    if (action === "archive" && b.current) throw new LoreError("Cannot archive the current branch");
+    if (action === "protect") b.protected = true;
+    else if (action === "unprotect") b.protected = false;
+    else b.archived = true;
+  }
+
+  async revisionDetail(revision: string): Promise<RevisionDetail> {
+    await this.delay();
+    const r = this.data.revisions.find((x) => x.hash === revision || `${x.branch}@${x.number}` === revision || String(x.number) === revision);
+    if (!r) throw new LoreError(`Revision not found: ${revision}`);
+    const rnd = mulberry32(r.number);
+    const files = Array.from({ length: 1 + Math.floor(rnd() * 6) }, () => this.data.files[Math.floor(rnd() * this.data.files.length)] as FileEntry).map((f) => ({ path: f.path, action: "modify" as const, size: f.size, fromPath: null }));
+    return { ...clone(r), files, metadata: { message: r.message, timestamp: String(r.timestamp), ...(r.author ? { "committed-by": r.author } : {}) } };
+  }
+
+  async amend(message: string): Promise<void> {
+    await this.delay();
+    const head = this.data.revisions[0];
+    if (!head) throw new LoreError("No revision to amend");
+    if (!this.requireRepo().aheadBy) throw new LoreError("Only an unpushed latest revision can be amended");
+    head.message = message;
   }
 
   // ---- locks (advisory in Lore) ----
@@ -386,9 +422,37 @@ export class MockBackend implements LoreBackend {
     return clone(this.data.locks.filter((l) => (!q.branch || l.branch === q.branch) && (!q.owner || l.owner === q.owner) && (!q.path || l.path === q.path)));
   }
 
+  private identityOverride: string | null = null;
+  private loggedIn = true;
+
+  setIdentity(identity: string | null): void {
+    this.identityOverride = identity?.trim() || null;
+  }
+
   async authInfo(): Promise<AuthInfo> {
     await this.delay();
-    return { remote: this.data.remotes[0]?.url ?? null, identity: this.opts.identity, loggedIn: true };
+    const identity = this.identityOverride ?? this.opts.identity;
+    return {
+      remote: this.repo?.remoteUrl ?? null,
+      identity,
+      identitySource: this.identityOverride ? "preference" : "repository",
+      authSupported: true,
+      loggedIn: this.loggedIn,
+      user: this.loggedIn ? { id: "u-1", name: identity } : null,
+      note: null,
+    };
+  }
+
+  async authLogin(onPrompt: (p: { url: string; code: string }) => void): Promise<AuthInfo> {
+    onPrompt({ url: "https://auth.example.invalid/device", code: "LORE-1234" });
+    await this.delay();
+    this.loggedIn = true;
+    return this.authInfo();
+  }
+
+  async authLogout(): Promise<AuthInfo> {
+    this.loggedIn = false;
+    return this.authInfo();
   }
 
   // ---- views ----

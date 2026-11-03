@@ -199,4 +199,26 @@ textarea.input { height: auto; padding: 4px 6px; resize: vertical; font-family: 
 @media (max-width: 1580px) { .tbtn .ico + .lbl { display: none; } .tbtn { padding: 0 6px; } }
 @media (max-width: 1100px) { .toolbar .badge:not(.mock) { display: none; } }
 /* the gear is always icon-only */
-.tbtn[aria-label="Preferences"] .lbl, .tbtn[aria-label="Preferences"] .kbd { display: none; }
+.tbtn[aria-label="Preferences"] .lbl, .tbtn[aria-label="Preferences"] .kbd, .tbtn[aria-label="Commands"] .lbl, .tbtn[aria-label="Commands"] .kbd { display: none; }
+
+/* history */
+.rev-row { position: absolute; left: 0; right: 0; height: 40px; padding: 3px 8px; cursor: default; border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent); }
+.rev-row:hover { background: var(--bg-3); }
+.rev-row.active { background: var(--sel-bg); }
+.rev-msg { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* health card */
+.health { padding: 6px; display: flex; flex-direction: column; gap: 4px; border-bottom: 1px solid var(--border); }
+.health-item { padding: 5px 8px; border-radius: var(--radius); border-left: 3px solid var(--accent); background: var(--bg-2); font-size: var(--fs-sm); }
+.health-item.warn { border-left-color: var(--st-modified); }
+.health-item.error { border-left-color: var(--st-conflict); }
+.health-item code { display: block; margin-top: 3px; font-family: var(--font-mono); font-size: 11px; user-select: text; color: var(--text-dim); }
+/* palette */
+.palette-row.disabled { opacity: .45; }
+.badge.where-local { background: #3b3214; color: var(--st-modified); }
+.badge.where-remote { background: var(--accent-bg); color: var(--accent); }
+
+/* sidebar: four tabs share the width; group titles never wrap */
+.sidebar .tabs .tab { flex: 1 1 0; min-width: 0; padding: 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.group-title { white-space: nowrap; overflow: hidden; }
+.group-title .grow { overflow: hidden; text-overflow: ellipsis; }
+.capped { max-height: 168px; overflow: auto; }

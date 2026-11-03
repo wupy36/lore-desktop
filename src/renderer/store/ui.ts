@@ -2,11 +2,18 @@
 import { create } from "zustand";
 import type { ChangeGroup } from "@shared/types";
 
-export type SidebarTab = "repository" | "workspace" | "changes";
+export type SidebarTab = "repository" | "workspace" | "changes" | "history";
 export type BottomTab = "console" | "transfers";
 export type ViewMode = "all" | "changed";
 export type DetailTab = "history" | "diff";
-export type Modal = "preferences" | "about" | "createRepository" | null;
+export type Modal = "preferences" | "about" | "createRepository" | "account" | "palette" | null;
+/** What the Diff tab compares. Absent source = current revision; absent target = working tree. */
+export interface DiffSpec {
+  path: string;
+  source?: string;
+  target?: string;
+  label?: string;
+}
 
 export interface UiState {
   sidebarTab: SidebarTab;
@@ -23,6 +30,11 @@ export interface UiState {
   commitMessage: string;
   detailTab: DetailTab;
   modal: Modal;
+  diffSpec: DiffSpec | null;
+  /** Pending interactive login (URL + code to show). */
+  authPrompt: { url: string; code: string } | null;
+  /** Revision selected in the History tab (hash). */
+  historyRevision: string | null;
   layout: { sidebarW: number; detailW: number; bottomH: number };
 
   setSidebarTab(t: SidebarTab): void;
@@ -40,6 +52,10 @@ export interface UiState {
   openDetail(path: string, tab: DetailTab): void;
   setDetailTab(t: DetailTab): void;
   setModal(m: Modal): void;
+  /** Show a specific comparison in the detail pane's Diff tab. */
+  openDiff(spec: DiffSpec): void;
+  setHistoryRevision(hash: string | null): void;
+  setAuthPrompt(p: { url: string; code: string } | null): void;
   setLayout(p: Partial<UiState["layout"]>): void;
 }
 
@@ -58,6 +74,9 @@ export const useUi = create<UiState>()((set, get) => ({
   commitMessage: "",
   detailTab: "history",
   modal: null,
+  diffSpec: null,
+  authPrompt: null,
+  historyRevision: null,
   layout: { sidebarW: 300, detailW: 380, bottomH: 200 },
 
   setSidebarTab: (sidebarTab) => set({ sidebarTab }),
@@ -89,9 +108,12 @@ export const useUi = create<UiState>()((set, get) => ({
   selectAll: (ordered) => set({ selected: new Set(ordered), focused: get().focused ?? ordered[0] ?? null }),
   clearSelection: () => set({ selected: new Set(), anchor: null, focused: null }),
   setCommitMessage: (commitMessage) => set({ commitMessage }),
-  openDetail: (path, detailTab) => set((s) => ({ detailTab, focused: path, selected: s.selected.has(path) ? s.selected : new Set([path]), anchor: s.anchor ?? path })),
+  openDetail: (path, detailTab) => set((s) => ({ detailTab, diffSpec: s.diffSpec?.path === path ? s.diffSpec : null, focused: path, selected: s.selected.has(path) ? s.selected : new Set([path]), anchor: s.anchor ?? path })),
   setDetailTab: (detailTab) => set({ detailTab }),
   setModal: (modal) => set({ modal }),
+  openDiff: (diffSpec) => set({ diffSpec, detailTab: "diff", focused: diffSpec.path }),
+  setHistoryRevision: (historyRevision) => set({ historyRevision }),
+  setAuthPrompt: (authPrompt) => set({ authPrompt }),
   setLayout: (p) =>
     set((s) => ({
       layout: {

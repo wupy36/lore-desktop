@@ -25,6 +25,11 @@ const commandFor: Partial<Record<keyof LoreBackend, CmdBuilder>> = {
   listBranches: cli.branchList,
   switchBranch: (n: string, o?: { reset?: boolean }) => cli.branchSwitch(n, o?.reset),
   createBranch: cli.branchCreate,
+  branchAction: (n: string, a: "protect" | "unprotect" | "archive") => ["branch", a, n],
+  revisionDetail: (r: string) => ["revision", "info", "--metadata", "--delta", r],
+  amend: (m: string) => ["revision", "amend", m],
+  authLogin: () => ["auth", "login"],
+  authLogout: () => ["auth", "logout"],
   lockAcquire: cli.lockAcquire,
   lockRelease: cli.lockRelease,
   lockQuery: cli.lockQuery,
@@ -32,13 +37,13 @@ const commandFor: Partial<Record<keyof LoreBackend, CmdBuilder>> = {
   cloneRepository: cli.clone,
   openRepository: cli.repoInfo,
   createRepository: cli.repoCreate,
-  maintenance: cli.maintenance,
+  maintenance: (op: "verify" | "gc" | "flush" | "prune" | "updatePath") => cli.maintenance(op),
   exportFile: (p: string, rev: string | undefined, out: string) => cli.fileWrite(p, out, rev),
   listRemoteRepositories: cli.repoList,
   listInstances: cli.instanceList,
 };
 
-const SILENT = new Set<string>(["currentRepository", "kind", "canCancel", "dispose"]);
+const SILENT = new Set<string>(["currentRepository", "kind", "canCancel", "dispose", "setIdentity"]);
 let logSeq = 0;
 
 export function nextLogId(): number {

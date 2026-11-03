@@ -8,7 +8,10 @@ import { BottomPanel } from "./components/BottomPanel/BottomPanel";
 import { DetailPane } from "./components/DetailPane";
 import { FileTable } from "./components/FileTable";
 import { NoRepository } from "./components/NoRepository";
+import { AccountDialog } from "./components/AccountDialog";
+import { CommandPalette } from "./components/CommandPalette";
 import { ChangesTab } from "./components/Sidebar/ChangesTab";
+import { HistoryTab } from "./components/Sidebar/HistoryTab";
 import { RepositoryTab } from "./components/Sidebar/RepositoryTab";
 import { WorkspaceTab } from "./components/Sidebar/WorkspaceTab";
 import { Splitter } from "./components/Splitter";
@@ -22,6 +25,7 @@ const TABS: { id: SidebarTab; label: string }[] = [
   { id: "repository", label: "Repository" },
   { id: "workspace", label: "Workspace" },
   { id: "changes", label: "Changes" },
+  { id: "history", label: "History" },
 ];
 
 /** Theme / font size / density from preferences → attributes and CSS variables on <html>. */
@@ -42,6 +46,8 @@ function Modals() {
   const close = () => useUi.getState().setModal(null);
   if (modal === "preferences") return <PreferencesDialog onClose={close} />;
   if (modal === "about") return <AboutDialog onClose={close} />;
+  if (modal === "account") return <AccountDialog onClose={close} />;
+  if (modal === "palette") return <CommandPalette onClose={close} />;
   if (modal === "createRepository")
     return (
       <Modal title="New repository" onClose={close}>
@@ -88,6 +94,7 @@ export function App() {
         {ui.sidebarTab === "repository" && <RepositoryTab />}
         {ui.sidebarTab === "workspace" && <WorkspaceTab />}
         {ui.sidebarTab === "changes" && <ChangesTab />}
+        {ui.sidebarTab === "history" && <HistoryTab />}
       </aside>
       <Splitter k="sidebarW" axis="x" sign={1} className="splitter-v" />
       <main className="pane center" aria-label="Files">

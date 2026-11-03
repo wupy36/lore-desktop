@@ -71,8 +71,20 @@ export function useActions() {
       openRepository: (path: string) => run("open repository", () => api.invoke("repo:open", { path })),
       clone: (url: string, path: string) => run("clone", () => api.invoke("repo:clone", { url, path })),
       pickFolder: (title?: string) => api.invoke("dialog:pickFolder", { title }).catch(() => null),
+      createBranchAndSwitch: (name: string) => run("create branch", () => api.invoke("branch:create", { name })),
+      branchAction: (name: string, action: "protect" | "unprotect" | "archive") => run(`branch ${action}`, () => api.invoke("branch:action", { name, action })),
+      amend: (message: string) => run("amend", () => api.invoke("rev:amend", { message })),
+      login: () =>
+        run("sign in", async () => {
+          try {
+            qc.setQueryData(qk.auth, await api.invoke("auth:login", undefined));
+          } finally {
+            useUi.getState().setAuthPrompt(null);
+          }
+        }),
+      logout: () => run("sign out", async () => qc.setQueryData(qk.auth, await api.invoke("auth:logout", undefined))),
       cancel: (opId: string) => run("cancel", () => api.invoke("op:cancel", { opId })),
-      openExternalDiff: (path: string) => run("external diff", () => api.invoke("file:openExternalDiff", { path })),
+      openExternalDiff: (path: string, source?: string, target?: string) => run("external diff", () => api.invoke("file:openExternalDiff", { path, source, target })),
     };
   }, [api, qc, run, selection, repo, prefs]);
 }

@@ -1,6 +1,6 @@
 import { changeGroup } from "@shared/types";
 import { useActions } from "../actions";
-import { useAppInfo, useRepo } from "../api/queries";
+import { useAppInfo, useAuth, useRepo } from "../api/queries";
 import { useUi } from "../store/ui";
 
 /** `label` is "<icon> <text>"; narrow windows show only the icon (full text stays in the tooltip / accessible name). */
@@ -21,6 +21,7 @@ export function Toolbar({ minimal = false }: { minimal?: boolean }) {
   const a = useActions();
   const repo = useRepo().data;
   const info = useAppInfo().data;
+  const auth = useAuth().data;
   const viewMode = useUi((s) => s.viewMode);
   const setViewMode = useUi((s) => s.setViewMode);
   const text = useUi((s) => s.text);
@@ -70,7 +71,12 @@ export function Toolbar({ minimal = false }: { minimal?: boolean }) {
         </span>
       )}
       {!!repo?.aheadBy && <span className="badge ahead">{repo.aheadBy} to push</span>}
+      {!!repo?.behindBy && <span className="badge ahead">{repo.behindBy} to sync</span>}
+      <button className="badge" style={{ border: "none", cursor: "pointer" }} onClick={() => useUi.getState().setModal("account")} title="Account and commit identity">
+        👤 {auth?.user?.name ?? auth?.identity ?? "no identity"}
+      </button>
       {info && <span className={`badge${info.backend === "mock" ? " mock" : ""}`}>{info.backend}</span>}
+      <T label="⌘ Commands" kbd="Ctrl+K" title="Command palette" onClick={() => useUi.getState().setModal("palette")} />
       <T label="⚙ Preferences" kbd="Ctrl+," title="Preferences" onClick={() => useUi.getState().setModal("preferences")} />
     </div>
   );

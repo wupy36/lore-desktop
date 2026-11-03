@@ -15,10 +15,28 @@ import type * as Sdk from "@lore-vcs/sdk";
 import type * as SdkEnums from "@lore-vcs/sdk/types/enums";
 import type { LoreGlobalArgs } from "@lore-vcs/sdk/types/args";
 import type { LoreEventFFI } from "@lore-vcs/sdk/types/events";
-import type { FileEntry, Instance, MaintenanceOp, RemoteRepo, RepoInfo, Revision, StatusResult } from "@shared/types";
+import {
+  isBinaryPath,
+  type AuthInfo,
+  type Branch,
+  type BranchAction,
+  type DiffResult,
+  type FileEntry,
+  type FileRevision,
+  type Instance,
+  type MaintenanceOp,
+  type RemoteRepo,
+  type RepoInfo,
+  type Revision,
+  type RevisionDetail,
+  type StatusResult,
+} from "@shared/types";
 import { LoreError, type CloneOptions, type LoreBackend, type OpContext, type StatusOptions, type SyncOptions } from "./LoreBackend";
 import {
+  mapAction,
   mapCloneProgress,
+  metaValue,
+  revisionFromMeta,
   mapCommitProgress,
   mapPushProgress,
   mapStatusFile,
@@ -36,6 +54,8 @@ type Fluent = { callback(fn: (e: LoreEventFFI) => void): { waitAsync(): Promise<
 const notYet = (op: string, phase: number) => () => Promise.reject(new LoreError(`${op}: not implemented in SdkBackend yet (Phase ${phase})`));
 const baseName = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
 const TREE_CONCURRENCY = 8;
+/** Inline diffs above this are shown as binary/metadata (use the external diff tool). */
+const MAX_PATCH_CHARS = 2_000_000;
 
 export class SdkBackend implements LoreBackend {
   readonly kind = "sdk" as const;
@@ -44,6 +64,9 @@ export class SdkBackend implements LoreBackend {
   private queue: Promise<unknown> = Promise.resolve();
   /** Committed tree listing, keyed by revision hash (a revision is immutable). */
   private treeCache: { hash: string; files: TreeFile[] } | null = null;
+  /** Branch id → name, for history entries (metadata carries the branch id). */
+  private branchNames = new Map<string, string>();
+  private identity: string | null = null;
 
   private constructor(
     private readonly sdk: SdkModule,
@@ -72,8 +95,15 @@ export class SdkBackend implements LoreBackend {
   /** Globals for the open repository. `workingDirectory` makes repo-relative paths resolve
    * against the repository, not the app's cwd (and is correct if the Lore service runs the call). */
   private globals(path = this.requireRepo().path): LoreGlobalArgs {
-    return { repositoryPath: path, workingDirectory: path };
+    return { repositoryPath: path, workingDirectory: path, ...(this.identity ? { identity: this.identity } : {}) };
   }
+
+  setIdentity(identity: string | null): void {
+    this.identity = identity?.trim() || null;
+  }
+
+  /** Hash for a revision identifier. Lore accepts `[branch]@<n>`, `[branch]@LATEST`, full hashes. */
+  private zeroHash = (h: string) => /^0*$/.test(h);
 
   /** Run a fluent call. `onEvent` runs INSIDE the native callback: copy what you need. */
   private async run(call: Fluent, onEvent: (e: LoreEventFFI) => void = () => {}, signal?: AbortSignal): Promise<void> {
@@ -162,6 +192,8 @@ export class SdkBackend implements LoreBackend {
       revision: r?.revision ?? null,
       revisionHash: r?.revisionHash ?? null,
       aheadBy: r?.aheadBy ?? 0,
+      behindBy: r?.behindBy ?? 0,
+      mergePending: r?.mergePending ?? false,
       offline: r ? !r.remoteAvailable : true,
     };
     return { ...this.repo };
@@ -276,6 +308,9 @@ export class SdkBackend implements LoreBackend {
         case "prune":
           await this.run(l.repositoryInstancePrune(g, {}));
           return "Stale instances pruned";
+        case "updatePath":
+          await this.run(l.repositoryUpdatePath(g, {}));
+          return `Stored path updated to ${g.repositoryPath}`;
       }
     });
   }
@@ -420,15 +455,243 @@ export class SdkBackend implements LoreBackend {
     });
   }
 
-  // Phase 2 (not in the core loop): auth
-  authInfo = notYet("auth info", 2);
-  // Phase 3
-  history = notYet("history", 3);
-  fileHistory = notYet("file history", 3);
-  diff = notYet("diff", 3);
-  listBranches = notYet("branch list", 3);
-  switchBranch = notYet("branch switch", 3);
-  createBranch = notYet("branch create", 3);
+  // ---- history & diff (Phase 3) ----
+
+  /** History events arrive as an entry followed by METADATA events for that entry. */
+  history(o: { branch?: string; length: number }): Promise<Revision[]> {
+    return this.serial(async () => {
+      const { LoreEventTag } = this.enums;
+      await this.ensureBranchNames();
+      const out: { head: { number: number; hash: string; parents: string[] }; meta: Record<string, string> }[] = [];
+      await this.run(this.sdk.lore.revisionHistory(this.globals(), { length: o.length, ...(o.branch ? { branch: o.branch } : {}) }), (e) => {
+        if (e.tag === LoreEventTag.REVISION_HISTORY_ENTRY) {
+          out.push({ head: { number: Number(e.data.revisionNumber), hash: e.data.revision.toString(), parents: e.data.parent.map((p) => p.toString()).filter((p) => !this.zeroHash(p)) }, meta: {} });
+        } else if (e.tag === LoreEventTag.METADATA && out.length) {
+          (out[out.length - 1] as (typeof out)[number]).meta[String(e.data.key)] = metaValue(e.data.value);
+        }
+      });
+      return out.map(({ head, meta }) => revisionFromMeta(head, meta, this.branchNames));
+    });
+  }
+
+  fileHistory(path: string, length: number): Promise<FileRevision[]> {
+    return this.serial(async () => {
+      const { LoreEventTag } = this.enums;
+      await this.ensureBranchNames();
+      const out: { rev: Omit<FileRevision, "author" | "timestamp" | "message" | "branch">; meta: Record<string, string> }[] = [];
+      await this.run(this.sdk.lore.fileHistory(this.globals(), { path, length }), (e) => {
+        if (e.tag === LoreEventTag.FILE_HISTORY) {
+          const d = e.data;
+          const from = String(d.fromPath ?? "");
+          out.push({
+            rev: {
+              number: Number(d.revisionNumber),
+              hash: d.revision.toString(),
+              parents: d.parent.map((p) => p.toString()).filter((p) => !this.zeroHash(p)),
+              path: String(d.path),
+              action: mapAction(d.action, true),
+              size: Number(d.size),
+              fileHash: String(d.address?.hash ?? ""),
+              ...(from ? {} : {}),
+            },
+            meta: {},
+          });
+        } else if (e.tag === LoreEventTag.METADATA && out.length) {
+          (out[out.length - 1] as (typeof out)[number]).meta[String(e.data.key)] = metaValue(e.data.value);
+        }
+      });
+      return out.map(({ rev, meta }) => ({ ...revisionFromMeta(rev, meta, this.branchNames), ...rev }));
+    });
+  }
+
+  /** Text: unified patch from `file diff`. Binary (Lore emits no patch): size/hash from `file info` on both sides. */
+  diff(o: { path: string; source?: string; target?: string }): Promise<DiffResult> {
+    return this.serial(async () => {
+      const { LoreEventTag } = this.enums;
+      const repo = this.requireRepo();
+      let patch: string | null = null;
+      let tooLarge = false;
+      // Lore diffs anything as text (a .uasset without NUL bytes yields a huge patch), so known
+      // binary types never ask for a patch; others are capped.
+      if (!isBinaryPath(o.path)) {
+        await this.run(
+          this.sdk.lore.fileDiff(this.globals(), { paths: [o.path], ...(o.source ? { sourceRevision: o.source } : {}), ...(o.target ? { targetRevision: o.target } : {}), contextLines: 3 }),
+          (e) => {
+            if (e.tag !== LoreEventTag.FILE_DIFF) return;
+            const text = String(e.data.patch);
+            if (text.length > MAX_PATCH_CHARS || text.includes("\u0000")) tooLarge = true;
+            else patch = text;
+          },
+        );
+      }
+      const info = async (revision: string | undefined, local: boolean) => {
+        let meta: { revision: string; size: number; hash: string } | null = null;
+        await this.run(this.sdk.lore.fileInfo(this.globals(), { paths: [o.path], ...(revision ? { revision } : {}), local }), (e) => {
+          if (e.tag !== LoreEventTag.FILE_INFO) return;
+          const d = e.data;
+          meta = local
+            ? { revision: "working tree", size: Number(d.localSize), hash: d.localHash.toString() }
+            : { revision: revision ?? repo.revisionHash ?? "", size: Number(d.size), hash: d.hash.toString() };
+        }).catch(() => undefined);
+        return meta as { revision: string; size: number; hash: string } | null;
+      };
+      const source = await info(o.source, false);
+      const target = o.target ? await info(o.target, false) : await info(undefined, true);
+      const p = patch as string | null;
+      const binary = isBinaryPath(o.path) || tooLarge || (p === null && !!source && !!target && source.hash !== target.hash);
+      return { path: o.path, binary, unified: binary ? null : (p ?? ""), source, target };
+    });
+  }
+
+  revisionDetail(revision: string): Promise<RevisionDetail> {
+    return this.serial(async () => {
+      const { LoreEventTag } = this.enums;
+      await this.ensureBranchNames();
+      let head: { number: number; hash: string; parents: string[] } | null = null;
+      const meta: Record<string, string> = {};
+      const files: RevisionDetail["files"] = [];
+      await this.run(this.sdk.lore.revisionInfo(this.globals(), { revision, metadata: true, delta: true }), (e) => {
+        if (e.tag === LoreEventTag.REVISION_INFO) head = { number: Number(e.data.revisionNumber), hash: e.data.revision.toString(), parents: e.data.parent.map((p) => p.toString()).filter((p) => !this.zeroHash(p)) };
+        else if (e.tag === LoreEventTag.METADATA) meta[String(e.data.key)] = metaValue(e.data.value);
+        else if (e.tag === LoreEventTag.REVISION_INFO_DELTA && e.data.flagFile) {
+          const from = String(e.data.fromPath ?? "");
+          files.push({ path: String(e.data.path), action: mapAction(e.data.action, !!e.data.flagModify || true), size: Number(e.data.size), fromPath: from || null });
+        }
+      });
+      const h = head as { number: number; hash: string; parents: string[] } | null;
+      if (!h) throw new LoreError(`Revision not found: ${revision}`);
+      return { ...revisionFromMeta(h, meta, this.branchNames), files, metadata: meta };
+    });
+  }
+
+  amend(message: string): Promise<void> {
+    return this.serial(() => this.run(this.sdk.lore.revisionAmend(this.globals(), { message })));
+  }
+
+  // ---- branches (Phase 3) ----
+
+  private async branchesRaw(): Promise<Branch[]> {
+    const { LoreEventTag } = this.enums;
+    const byId = new Map<string, Branch & { locs: Set<number> }>();
+    await this.run(this.sdk.lore.branchList(this.globals(), {}), (e) => {
+      if (e.tag !== LoreEventTag.BRANCH_LIST_ENTRY) return;
+      const d = e.data;
+      const id = d.id.toString();
+      const loc = Number(d.location);
+      const prev = byId.get(id);
+      const latest = d.latest.toString();
+      const creator = String(d.creator ?? "");
+      const entry = prev ?? { name: String(d.name), id, latest: null, latestHash: null, current: false, protected: null, archived: false, where: "both" as const, creator: null, locs: new Set<number>() };
+      entry.locs.add(loc);
+      // Prefer the local view of "latest" (location 0); remote only when the branch isn't local.
+      if (loc === 0 || !entry.latestHash) entry.latestHash = this.zeroHash(latest) ? null : latest;
+      entry.current ||= !!d.isCurrent;
+      entry.archived ||= !!d.archived;
+      if (creator && creator !== "<unknown>") entry.creator = creator;
+      byId.set(id, entry);
+    });
+    this.branchNames = new Map([...byId.values()].map((b) => [b.id, b.name]));
+    return [...byId.values()].map(({ locs, ...b }) => ({ ...b, where: locs.has(0) && locs.has(1) ? "both" : locs.has(0) ? "local" : "remote" }));
+  }
+
+  private async ensureBranchNames(): Promise<void> {
+    if (!this.branchNames.size) await this.branchesRaw().catch(() => undefined);
+  }
+
+  listBranches(): Promise<Branch[]> {
+    return this.serial(async () => {
+      const repo = this.requireRepo();
+      const list = await this.branchesRaw();
+      // Revision number is known for the current branch (status); others show their hash.
+      return list.map((b) => (b.current ? { ...b, latest: repo.revision } : b)).sort((a, b) => Number(b.current) - Number(a.current) || a.name.localeCompare(b.name));
+    });
+  }
+
+  switchBranch(name: string, o: { reset?: boolean }, ctx: OpContext): Promise<void> {
+    return this.serial(async () => {
+      const repo = this.requireRepo();
+      ctx.progress({ current: 0, total: null, unit: "files", label: `Switch to ${name}` });
+      await this.run(this.sdk.lore.branchSwitch(this.globals(), { branch: name, reset: !!o.reset }), undefined, ctx.signal);
+      await this.refreshRepo(repo.path);
+    });
+  }
+
+  createBranch(name: string): Promise<Branch> {
+    return this.serial(async () => {
+      const repo = this.requireRepo();
+      await this.run(this.sdk.lore.branchCreate(this.globals(), { branch: name }));
+      await this.refreshRepo(repo.path);
+      const b = (await this.branchesRaw()).find((x) => x.name === name);
+      if (!b) throw new LoreError(`Branch ${name} was created but is not listed`);
+      return { ...b, latest: b.current ? (this.repo?.revision ?? null) : null };
+    });
+  }
+
+  branchAction(name: string, action: BranchAction): Promise<void> {
+    const l = this.sdk.lore;
+    return this.serial(() =>
+      this.run(action === "protect" ? l.branchProtect(this.globals(), { branch: name }) : action === "unprotect" ? l.branchUnprotect(this.globals(), { branch: name }) : l.branchArchive(this.globals(), { branch: name })),
+    );
+  }
+
+  // ---- account (step B) ----
+
+  /** Lore error 9 = "Operation not supported: authentication requires a configured auth endpoint". */
+  private static NO_AUTH = 9;
+
+  authInfo(): Promise<AuthInfo> {
+    return this.serial(() => this.authInfoRaw());
+  }
+
+  private async authInfoRaw(): Promise<AuthInfo> {
+    const { LoreEventTag } = this.enums;
+    const repo = this.requireRepo();
+    const configured = (await this.configGet(repo.path, "identity"))?.trim() || null;
+    const identity = this.identity ?? configured;
+    const base: AuthInfo = {
+      remote: repo.remoteUrl,
+      identity,
+      identitySource: this.identity ? "preference" : configured ? "repository" : "none",
+      authSupported: false,
+      loggedIn: false,
+      user: null,
+      note: null,
+    };
+    if (!repo.remoteUrl) return { ...base, note: "Local-only repository: no server to sign in to." };
+    let user: { id: string; name: string } | null = null;
+    try {
+      await this.run(this.sdk.lore.authUserInfo(this.globals(), {}), (e) => {
+        if (e.tag === LoreEventTag.AUTH_USER_INFO) user = { id: String(e.data.id), name: String(e.data.name) };
+      });
+    } catch (e) {
+      const code = (e as { code?: number; returnCode?: number }).code ?? (e as { returnCode?: number }).returnCode;
+      if (code === SdkBackend.NO_AUTH) return { ...base, note: "This server has no authentication configured (e.g. the demo server). Commits record the identity above." };
+      return { ...base, authSupported: true, note: `Not signed in (${e instanceof Error ? e.message.split("\n")[0] : String(e)})` };
+    }
+    const u = user as { id: string; name: string } | null;
+    return { ...base, authSupported: true, loggedIn: !!u, user: u };
+  }
+
+  authLogin(onPrompt: (p: { url: string; code: string }) => void): Promise<AuthInfo> {
+    return this.serial(async () => {
+      const { LoreEventTag } = this.enums;
+      const repo = this.requireRepo();
+      const remoteRoot = repo.remoteUrl?.replace(/\/[^/]+\/?$/, "");
+      if (!remoteRoot) throw new LoreError("Local-only repository: there is no server to sign in to");
+      await this.run(this.sdk.lore.authLoginInteractive(this.globals(), { remoteUrl: remoteRoot, noBrowser: true }), (e) => {
+        if (e.tag === LoreEventTag.AUTH_URL) onPrompt({ url: String(e.data.url), code: String(e.data.userCode) });
+      });
+      return this.authInfoRaw();
+    });
+  }
+
+  authLogout(): Promise<AuthInfo> {
+    return this.serial(async () => {
+      await this.run(this.sdk.lore.authLogout(this.globals(), {}));
+      return this.authInfoRaw();
+    });
+  }
+
   // Phase 4
   lockAcquire = notYet("lock acquire", 4);
   lockRelease = notYet("lock release", 4);

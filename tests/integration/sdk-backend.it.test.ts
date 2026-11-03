@@ -131,6 +131,91 @@ describe.skipIf(!REMOTE)("SdkBackend (real Lore)", () => {
     expect((await b.listRemoteRepositories(REMOTE as string)).some((r) => r.name === onlineName)).toBe(true);
   });
 
+  it("history: messages, timestamps, branch names, and authors from --identity", async () => {
+    await b.openRepository(join(root, "work"));
+    b.setIdentity("ada@studio.dev");
+    appendFileSync(join(root, "work", "Source", "main.cpp"), "// by ada\n");
+    await b.stage(["Source/main.cpp"]);
+    await b.commit("Ada edits main");
+    b.setIdentity(null);
+    const h = await b.history({ length: 10 });
+    expect(h[0]).toMatchObject({ message: "Ada edits main", author: "ada@studio.dev", branch: "main" });
+    expect(h.map((r) => r.message)).toEqual(expect.arrayContaining(["Add header", "seed"]));
+    expect(h[0]!.timestamp).toBeGreaterThan(Date.now() - 600_000);
+    expect(h[0]!.parents).toEqual([h[1]!.hash]);
+  });
+
+  it("file history lists the revisions that touched a file", async () => {
+    const fh = await b.fileHistory("Source/main.cpp", 10);
+    expect(fh.map((r) => r.message)).toEqual(["Ada edits main", "seed"]);
+    expect(fh[1]).toMatchObject({ action: "add", path: "Source/main.cpp" });
+  });
+
+  it("diff: unified text against a revision, metadata for binaries", async () => {
+    const work = join(root, "work");
+    appendFileSync(join(work, "Source", "main.cpp"), "// local\n");
+    const d = await b.diff({ path: "Source/main.cpp" });
+    expect(d.binary).toBe(false);
+    expect(d.unified).toContain("+// local");
+    const older = await b.diff({ path: "Source/main.cpp", source: "main@1" });
+    expect(older.unified).toContain("+// by ada");
+    writeFileSync(join(work, "Hero.uasset"), Buffer.alloc(250_000, 2));
+    const bin = await b.diff({ path: "Hero.uasset" });
+    expect(bin).toMatchObject({ binary: true, unified: null });
+    expect(bin.source?.size).toBe(200_000);
+    expect(bin.target).toMatchObject({ revision: "working tree", size: 250_000 });
+    expect(bin.source?.hash).not.toBe(bin.target?.hash);
+    await b.reset(["Source/main.cpp", "Hero.uasset"]);
+  });
+
+  it("revision detail lists changed files and metadata", async () => {
+    const [latest] = await b.history({ length: 1 });
+    const d = await b.revisionDetail(latest!.hash);
+    expect(d).toMatchObject({ number: latest!.number, message: "Ada edits main", author: "ada@studio.dev" });
+    expect(d.files).toEqual([expect.objectContaining({ path: "Source/main.cpp" })]);
+    expect(d.metadata.message).toBe("Ada edits main");
+  });
+
+  it("amend rewrites the latest (unpushed) commit message", async () => {
+    await b.amend("Ada edits main (amended)");
+    expect((await b.history({ length: 1 }))[0]?.message).toBe("Ada edits main (amended)");
+  });
+
+  it("branches: create switches to it, list shows where it lives, protect/archive, switch back", async () => {
+    const created = await b.createBranch("feature/it");
+    expect(created).toMatchObject({ name: "feature/it", current: true, where: "local" });
+    expect(b.currentRepository()?.branch).toBe("feature/it");
+    let list = await b.listBranches();
+    expect(list.find((x) => x.name === "main")).toMatchObject({ current: false });
+    await b.switchBranch("main", {}, ctx());
+    expect(b.currentRepository()?.branch).toBe("main");
+    list = await b.listBranches();
+    expect(list[0]).toMatchObject({ name: "main", current: true, latest: b.currentRepository()?.revision });
+    await b.branchAction("main", "protect");
+    await b.branchAction("main", "unprotect");
+    await b.branchAction("feature/it", "archive");
+    expect((await b.listBranches()).find((x) => x.name === "feature/it")?.archived ?? true).toBe(true);
+  });
+
+  it("account: identity source and an unauthenticated server is reported, not an error", async () => {
+    let a = await b.authInfo();
+    expect(a).toMatchObject({ authSupported: false, loggedIn: false, identitySource: expect.any(String) });
+    expect(a.note).toMatch(/no authentication/);
+    b.setIdentity("me@studio.dev");
+    a = await b.authInfo();
+    expect(a).toMatchObject({ identity: "me@studio.dev", identitySource: "preference" });
+    b.setIdentity(null);
+  });
+
+  it("health: behind/ahead after the other instance pushes", async () => {
+    // work is 1 ahead (amended commit, not pushed). Push it, then seed is behind by 1.
+    await b.push(undefined, ctx());
+    await b.openRepository(seedPath);
+    expect(b.currentRepository()).toMatchObject({ behindBy: 1, aheadBy: 0, mergePending: false });
+    await b.sync({}, ctx());
+    expect(b.currentRepository()).toMatchObject({ behindBy: 0 });
+  });
+
   it("reports Lore errors as LoreError with the message", async () => {
     await expect(b.commit("nothing staged")).rejects.toThrow(/./);
   });
