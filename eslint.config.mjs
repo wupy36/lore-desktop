@@ -21,7 +21,15 @@ export default tseslint.config(
     },
   },
   {
-    files: ["src/main/lore/SdkBackend.ts", "src/main/lore/mappers.ts"],
+    files: ["src/main/lore/SdkBackend.ts", "src/main/lore/mappers.ts", "tests/main/mappers.test.ts"],
     rules: { "no-restricted-imports": "off" },
+  },
+  {
+    files: ["tests/**"],
+    rules: { "@typescript-eslint/no-non-null-assertion": "off" },
+  },
+  {
+    files: ["scripts/**/*.cjs"],
+    rules: { "@typescript-eslint/no-require-imports": "off" },
   },
 );

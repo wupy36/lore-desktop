@@ -5,7 +5,7 @@
 // commands are relayed to the per-user Lore service transparently.
 import { spawn } from "node:child_process";
 import type { RepoInfo } from "@shared/types";
-import { type Argv, formatArgv } from "./commands";
+import { type Argv, formatArgv } from "@shared/commands";
 import { CancelledError, LoreError, type LoreBackend, type OpContext } from "./LoreBackend";
 
 export interface CliResult {

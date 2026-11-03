@@ -1,6 +1,6 @@
 // Sandboxed preload: exposes only a typed invoke/subscribe API.
 import { contextBridge, ipcRenderer } from "electron";
-import { IPC_EVENT, IPC_INVOKE, type IpcResponse, type LoreApi } from "@shared/ipc";
+import { IPC_EVENT, IPC_INVOKE, type IpcResponse, type LoreApi } from "@shared/bridge";
 
 const api: LoreApi = {
   async invoke(channel, input) {

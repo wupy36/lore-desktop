@@ -2,7 +2,7 @@
 // equivalent CLI command, args, duration and outcome (console log panel).
 import type { LogEntry } from "@shared/types";
 import type { Bus } from "../bus";
-import { cli, formatArgv } from "./commands";
+import { cli, formatArgv } from "@shared/commands";
 import type { LoreBackend } from "./LoreBackend";
 
 type AnyFn = (...a: unknown[]) => unknown;
