@@ -21,6 +21,8 @@ asarUnpack:
   - node_modules/@lore-vcs/**
   - node_modules/koffi/**
 npmRebuild: false
+# No auto-publishing (electron-builder publishes on CI by default); CI uploads artifacts instead.
+publish: null
 win:
   # Ship only this platform's Lore library and koffi binary.
   files:
