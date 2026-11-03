@@ -77,6 +77,10 @@ export const Revision = z.object({
 });
 export type Revision = z.infer<typeof Revision>;
 
+/** A revision in the history graph: also flags local-only (unpushed) revisions and the checked-out one. */
+export const GraphRevision = Revision.extend({ pending: z.boolean(), isHead: z.boolean() });
+export type GraphRevision = z.infer<typeof GraphRevision>;
+
 export const FileRevision = Revision.extend({ path: z.string(), action: FileAction, size: z.number(), fileHash: z.string() });
 export type FileRevision = z.infer<typeof FileRevision>;
 

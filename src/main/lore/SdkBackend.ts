@@ -23,6 +23,7 @@ import {
   type DiffResult,
   type FileEntry,
   type FileRevision,
+  type GraphRevision,
   type Instance,
   type MaintenanceOp,
   type RemoteRepo,
@@ -459,7 +460,35 @@ export class SdkBackend implements LoreBackend {
 
   /** History events arrive as an entry followed by METADATA events for that entry. */
   history(o: { branch?: string; length: number }): Promise<Revision[]> {
+    return this.serial(() => this.historyRaw(o));
+  }
+
+  /** Union of per-branch histories (each continues into its parent branch, so overlaps dedupe). */
+  graph(o: { scope: "current" | "all"; length: number }): Promise<GraphRevision[]> {
     return this.serial(async () => {
+      const repo = this.requireRepo();
+      const branches = await this.branchesRaw();
+      const targets = o.scope === "all" ? branches.filter((b) => !b.archived) : branches.filter((b) => b.name === repo.branch);
+      const byHash = new Map<string, Revision>();
+      for (const b of targets.length ? targets : [{ name: repo.branch }]) {
+        const revs = await this.historyRaw({ branch: b.name, length: o.length }).catch(() => [] as Revision[]);
+        for (const r of revs) if (!byHash.has(r.hash)) byHash.set(r.hash, r);
+      }
+      const localOnly = new Set(branches.filter((b) => b.where === "local").map((b) => b.name));
+      // Unpushed on the current branch: the newest `aheadBy` revision numbers.
+      const firstUnpushed = repo.revision !== null && repo.aheadBy > 0 ? repo.revision - repo.aheadBy + 1 : Infinity;
+      return [...byHash.values()]
+        .map((r) => ({
+          ...r,
+          isHead: r.hash === repo.revisionHash,
+          pending: localOnly.has(r.branch) || (r.branch === repo.branch && r.number >= firstUnpushed),
+        }))
+        .sort((a, b) => b.timestamp - a.timestamp || b.number - a.number);
+    });
+  }
+
+  private async historyRaw(o: { branch?: string; length: number }): Promise<Revision[]> {
+    {
       const { LoreEventTag } = this.enums;
       await this.ensureBranchNames();
       const out: { head: { number: number; hash: string; parents: string[] }; meta: Record<string, string> }[] = [];
@@ -471,7 +500,7 @@ export class SdkBackend implements LoreBackend {
         }
       });
       return out.map(({ head, meta }) => revisionFromMeta(head, meta, this.branchNames));
-    });
+    }
   }
 
   fileHistory(path: string, length: number): Promise<FileRevision[]> {
@@ -564,8 +593,13 @@ export class SdkBackend implements LoreBackend {
     });
   }
 
+  /** Amending rewrites the latest revision (new hash), so the repo state is re-read. */
   amend(message: string): Promise<void> {
-    return this.serial(() => this.run(this.sdk.lore.revisionAmend(this.globals(), { message })));
+    return this.serial(async () => {
+      const repo = this.requireRepo();
+      await this.run(this.sdk.lore.revisionAmend(this.globals(), { message }));
+      await this.refreshRepo(repo.path);
+    });
   }
 
   // ---- branches (Phase 3) ----

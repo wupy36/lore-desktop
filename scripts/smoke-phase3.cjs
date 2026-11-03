@@ -30,11 +30,18 @@ const launch = (args) => (exeArg ? { executablePath: exeArg, args } : { executab
   await step("history lists revisions with messages", async () => {
     await win.click("role=tab[name='History']");
     await win.waitForSelector("[aria-label=Revisions] [role=option]", { timeout: 15000 });
-    result.revisions = await win.$$eval("[aria-label=Revisions] [role=option]", (rs) => rs.slice(0, 3).map((r) => r.textContent));
-    if (!result.revisions.length || !result.revisions[0].includes("#")) throw new Error("no revisions");
+    result.revisions = await win.$$eval("[aria-label=Revisions] [role=option]:not([data-id=__working__])", (rs) => rs.slice(0, 3).map((r) => r.textContent));
+    if (!result.revisions.length || !result.revisions[0].trim()) throw new Error("no revisions");
+  });
+  await step("graph rail renders and hover highlights parent edges", async () => {
+    const first = "[aria-label=Revisions] [role=option]:not([data-id=__working__]) >> nth=0";
+    if (!(await win.$("[aria-label=Revisions] svg.rail path.rail-line"))) throw new Error("no rail lines");
+    await win.hover(first);
+    // A vertical path has a zero-width box, so wait for presence, not visibility.
+    await win.waitForSelector("[aria-label=Revisions] path.rail-line.hl", { state: "attached", timeout: 5000 });
   });
   await step("revision → files → inline diff vs parent", async () => {
-    await win.click("[aria-label=Revisions] [role=option] >> nth=0");
+    await win.click("[aria-label=Revisions] [role=option]:not([data-id=__working__]) >> nth=0");
     await win.waitForSelector("[aria-label='Files in revision'] [role=listitem]", { timeout: 10000 });
     await win.click("[aria-label='Files in revision'] [role=listitem] >> nth=0");
     const end = Date.now() + 15000;

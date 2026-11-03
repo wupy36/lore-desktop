@@ -21,6 +21,7 @@ const commandFor: Partial<Record<keyof LoreBackend, CmdBuilder>> = {
   sync: cli.sync,
   history: (o: { branch?: string; length: number }) => cli.history(o.length, o.branch),
   fileHistory: cli.fileHistory,
+  graph: (o: { scope: "current" | "all"; length: number }) => cli.history(o.length, o.scope === "all" ? "<each branch>" : undefined),
   diff: (o: { path: string; source?: string; target?: string }) => cli.diff(o.path, o.source, o.target),
   listBranches: cli.branchList,
   switchBranch: (n: string, o?: { reset?: boolean }) => cli.branchSwitch(n, o?.reset),

@@ -15,9 +15,10 @@ import type {
   BranchAction,
   MaintenanceOp,
   RevisionDetail,
+  GraphRevision,
   StatusResult,
 } from "@shared/types";
-import { generateMockRepo, mulberry32, type MockRepoData } from "./mock/fixtures";
+import { generateMockGraph, generateMockRepo, mulberry32, type MockRepoData } from "./mock/fixtures";
 import {
   CancelledError,
   LoreError,
@@ -285,6 +286,22 @@ export class MockBackend implements LoreBackend {
     await this.delay();
     const revs = o.branch && o.branch !== this.currentBranch().name ? this.data.revisions.slice(-20).map((r) => ({ ...r, branch: o.branch as string })) : this.data.revisions;
     return clone(revs.slice(0, o.length));
+  }
+
+  async graph(o: { scope: "current" | "all"; length: number }): Promise<GraphRevision[]> {
+    await this.delay();
+    const repo = this.requireRepo();
+    // Revisions committed in this session sit on top of the fixture history.
+    const fresh = this.data.revisions.filter((r) => r.number > 240);
+    const graph = [...fresh.map((r) => ({ ...r, pending: false })), ...generateMockGraph(this.data.revisions.filter((r) => r.number <= 240))];
+    const firstUnpushed = repo.revision !== null && repo.aheadBy > 0 ? repo.revision - repo.aheadBy + 1 : Infinity;
+    const scoped = o.scope === "all" ? graph : graph.filter((r) => r.branch === "main");
+    return clone(
+      scoped
+        .map((r) => ({ ...r, isHead: r.hash === repo.revisionHash, pending: r.pending || (r.branch === repo.branch && r.number >= firstUnpushed) }))
+        .sort((a, b) => b.timestamp - a.timestamp || b.number - a.number)
+        .slice(0, o.length),
+    );
   }
 
   async fileHistory(path: string, length: number): Promise<FileRevision[]> {

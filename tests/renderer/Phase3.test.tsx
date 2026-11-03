@@ -44,8 +44,9 @@ describe("History tab", () => {
     await renderApp();
     fireEvent.click(screen.getByRole("tab", { name: "History" }));
     const list = await screen.findByRole("listbox", { name: "Revisions" });
-    const first = (await within(list).findAllByRole("option"))[0]!;
-    expect(first.textContent).toMatch(/#240/);
+    await waitFor(() => expect(within(list).getAllByRole("option").length).toBeGreaterThan(3));
+    const first = within(list).getAllByRole("option").find((o) => o.getAttribute("title")?.startsWith("#240 · main"))!;
+    expect(first).toBeTruthy();
     fireEvent.click(first);
     const files = await screen.findByRole("list", { name: "Files in revision" });
     const file = (await within(files).findAllByRole("listitem"))[0]!;

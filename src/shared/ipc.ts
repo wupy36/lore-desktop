@@ -10,6 +10,7 @@ import {
   DiffResult,
   FileEntry,
   FileRevision,
+  GraphRevision,
   Instance,
   Lock,
   LogEntry,
@@ -52,6 +53,8 @@ export const contract = {
   "rev:commit": { input: z.object({ message: z.string().min(1) }), output: Revision },
   "rev:push": { input: z.object({ branch: z.string().optional() }), output: OpHandle },
   "rev:sync": { input: z.object({ revision: z.string().optional(), reset: z.boolean().optional(), viewFile: z.string().optional(), rootFiles: z.array(z.string()).optional() }), output: OpHandle },
+  /** History across the current or all branches, deduplicated, newest first (for the graph view). */
+  "rev:graph": { input: z.object({ scope: z.enum(["current", "all"]), length: z.number().int().positive().max(5000) }), output: z.array(GraphRevision) },
   "rev:info": { input: z.object({ revision: z.string() }), output: RevisionDetail },
   "rev:amend": { input: z.object({ message: z.string().min(1) }), output: z.object({ ok: z.literal(true) }) },
   "rev:history": { input: z.object({ branch: z.string().optional(), length: z.number().int().positive().max(5000) }), output: z.array(Revision) },

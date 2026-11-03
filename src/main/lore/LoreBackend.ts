@@ -6,6 +6,7 @@ import type {
   DiffResult,
   FileEntry,
   FileRevision,
+  GraphRevision,
   Instance,
   Lock,
   RemoteRepo,
@@ -87,6 +88,8 @@ export interface LoreBackend {
   push(branch: string | undefined, ctx: OpContext): Promise<void>;
   sync(opts: SyncOptions, ctx: OpContext): Promise<void>;
   history(opts: { branch?: string; length: number }): Promise<Revision[]>;
+  /** History of the current (or every non-archived) branch, merged and deduplicated, newest first. */
+  graph(opts: { scope: "current" | "all"; length: number }): Promise<GraphRevision[]>;
   fileHistory(path: string, length: number): Promise<FileRevision[]>;
   diff(opts: { path: string; source?: string; target?: string }): Promise<DiffResult>;
   /** Revision header, metadata and changed files (`lore revision info --metadata --delta`). */

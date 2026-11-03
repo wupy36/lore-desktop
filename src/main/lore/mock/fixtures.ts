@@ -146,3 +146,46 @@ export function generateMockRepo(seed = 1337): MockRepoData {
 
   return { files, revisions, branches, locks, remotes, view: ["Source/**", "Config/**", "Content/Characters/**", "Content/Maps/**"] };
 }
+
+/** Branched history for the graph view, derived from the linear main history
+ * (newest first). Deterministic. Main gets two merge revisions:
+ *   dev ── forks at main#226, 8 commits, merged back as main#235
+ *   feature/grapple-hook ── forks at dev#3, 4 commits, merged into dev at dev#7
+ *   feature/ui-polish ── forks at main#238, 3 local (unpushed) commits */
+export function generateMockGraph(main: readonly Revision[], seed = 7): (Revision & { pending: boolean })[] {
+  const rnd = mulberry32(seed);
+  const hash = () => Array.from({ length: 64 }, () => Math.floor(rnd() * 16).toString(16)).join("");
+  const byNum = new Map(main.map((r) => [r.number, { ...r, parents: [...r.parents], pending: false }]));
+  const at = (n: number) => byNum.get(n) as Revision & { pending: boolean };
+  const people = ["matthaus.bauer@studio.dev", "catherine.bell@studio.dev", "matt.rivera@studio.dev"];
+  const msgs = ["adjusted materials for statues", "purple material pass", "rose material", "adjusted collision on props", "updated controller curves", "Adjusted Joint limits", "LOD tweaks", "fix lightmap UVs"];
+  const out: (Revision & { pending: boolean })[] = [...byNum.values()];
+  const chain = (branch: string, from: Revision, count: number, t0: number, dt: number, author: (i: number) => string, pending = false) => {
+    const revs: (Revision & { pending: boolean })[] = [];
+    let parent = from.hash;
+    for (let i = 1; i <= count; i++) {
+      const r = { number: i, hash: hash(), branch, author: author(i), timestamp: t0 + i * dt, message: `${msgs[Math.floor(rnd() * msgs.length)]}`, parents: [parent], pending };
+      revs.push(r);
+      parent = r.hash;
+    }
+    out.push(...revs);
+    return revs;
+  };
+  const m226 = at(226);
+  if (!m226) return out;
+  const step = (at(227)?.timestamp ?? m226.timestamp + 25_200_000) - m226.timestamp;
+  const dev = chain("dev", m226, 8, m226.timestamp, step, (i) => people[i % 2] as string);
+  const grapple = chain("feature/grapple-hook", dev[2] as Revision, 4, (dev[2] as Revision).timestamp, step / 2, () => people[2] as string);
+  const dev7 = dev[6] as Revision;
+  dev7.parents = [(dev[5] as Revision).hash, (grapple[3] as Revision).hash];
+  dev7.message = "Merge feature/grapple-hook into dev";
+  const m235 = at(235);
+  if (m235) {
+    m235.parents = [(at(234) as Revision).hash, (dev[7] as Revision).hash];
+    m235.message = "Merge dev into main";
+    m235.timestamp = Math.max(m235.timestamp, (dev[7] as Revision).timestamp + 60_000);
+  }
+  const m238 = at(238);
+  if (m238) chain("feature/ui-polish", m238, 3, (at(240) as Revision).timestamp, 600_000, () => "me@studio.dev", true);
+  return out;
+}

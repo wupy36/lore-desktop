@@ -222,3 +222,48 @@ textarea.input { height: auto; padding: 4px 6px; resize: vertical; font-family: 
 .group-title { white-space: nowrap; overflow: hidden; }
 .group-title .grow { overflow: hidden; text-overflow: ellipsis; }
 .capped { max-height: 168px; overflow: auto; }
+
+/* ---- revision timeline (graph rail + author-grouped cards) ---- */
+:root {
+  --g0: #61afef; --g1: #c678dd; --g2: #98c379; --g3: #e5c07b; --g4: #56b6c2; --g5: #e06c75; --g6: #d19a66; --g7: #a0a8b4;
+}
+:root[data-theme="light"] { --g0: #0969da; --g1: #8250df; --g2: #1a7f37; --g3: #9a6700; --g4: #1b7c83; --g5: #cf222e; --g6: #bc4c00; --g7: #57606a; }
+.timeline { display: flex; flex-direction: column; min-height: 0; flex: 1 1 55%; }
+.timeline-scroll { flex: 1; min-height: 80px; overflow: auto; outline: none; }
+.tl-row { display: flex; align-items: center; gap: 6px; padding-right: 6px; }
+.tl-row .rail { flex: none; overflow: visible; }
+.tl-header .avatar { margin-left: -2px; }
+.tl-author { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tl-time { margin-left: auto; white-space: nowrap; }
+.tl-commit { cursor: default; }
+.tl-card { flex: 1; min-width: 0; height: 28px; display: flex; align-items: center; gap: 6px; padding: 0 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-2); }
+.tl-commit.hover .tl-card { background: var(--bg-3); }
+.tl-commit.selected .tl-card { border-color: var(--accent); background: var(--accent-bg); }
+.tl-card.head { box-shadow: inset 3px 0 0 var(--accent); }
+.tl-card.pending { border-style: dashed; }
+.tl-msg { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl-tag { flex: none; font-size: 10px; }
+.avatar { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 4px; font-size: 10px; font-weight: 700; letter-spacing: .02em; }
+.avatar.a0 { background: color-mix(in srgb, var(--g0) 28%, var(--bg-1)); color: var(--g0); }
+.avatar.a1 { background: color-mix(in srgb, var(--g1) 28%, var(--bg-1)); color: var(--g1); }
+.avatar.a2 { background: color-mix(in srgb, var(--g2) 28%, var(--bg-1)); color: var(--g2); }
+.avatar.a3 { background: color-mix(in srgb, var(--g3) 28%, var(--bg-1)); color: var(--g3); }
+.avatar.a4 { background: color-mix(in srgb, var(--g4) 28%, var(--bg-1)); color: var(--g4); }
+.avatar.a5 { background: color-mix(in srgb, var(--g5) 28%, var(--bg-1)); color: var(--g5); }
+.avatar.a6 { background: color-mix(in srgb, var(--g6) 28%, var(--bg-1)); color: var(--g6); }
+.avatar.a7 { background: color-mix(in srgb, var(--g7) 28%, var(--bg-1)); color: var(--g7); }
+/* rails: lane color via currentColor so lines, node ring and icon share it */
+.rail .g0 { color: var(--g0); } .rail .g1 { color: var(--g1); } .rail .g2 { color: var(--g2); } .rail .g3 { color: var(--g3); }
+.rail .g4 { color: var(--g4); } .rail .g5 { color: var(--g5); } .rail .g6 { color: var(--g6); } .rail .g7 { color: var(--g7); }
+.rail-line { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; transition: opacity .12s, stroke-width .12s; }
+.rail-line.dim, .rail-node.dim { opacity: .35; }
+.rail-line.hl { stroke-width: 3; }
+.rail-node-bg { fill: var(--bg-1); stroke: currentColor; stroke-width: 1.5; }
+.rail-node.head .rail-node-bg { fill: currentColor; }
+.rail-node.head .rail-icon { color: var(--bg-1); }
+.rail-node.hl .rail-node-bg { stroke-width: 2.5; }
+.rail-icon { color: currentColor; }
+/* segmented toggle */
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.seg-btn { height: 18px; padding: 0 6px; border: none; background: transparent; color: var(--text-dim); font-size: 11px; cursor: pointer; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.seg-btn.on { background: var(--accent-bg); color: var(--text); }

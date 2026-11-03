@@ -105,7 +105,7 @@ export function useBusBridge() {
       api.on("ws:changed", () => {
         if (timer) clearTimeout(timer);
         timer = setTimeout(() => {
-          for (const key of [qk.files, qk.repo, ["recent"], qk.auth, qk.branches, qk.locks, ["history"], ["fileHistory"], ["diff"]]) void qc.invalidateQueries({ queryKey: key });
+          for (const key of [qk.files, qk.repo, ["recent"], qk.auth, ["graph"], qk.branches, qk.locks, ["history"], ["fileHistory"], ["diff"]]) void qc.invalidateQueries({ queryKey: key });
         }, 100);
       }),
     ];

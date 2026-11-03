@@ -73,6 +73,7 @@ export class CliBackend implements LoreBackend {
   push = notYet("push");
   sync = notYet("sync");
   history = notYet("history");
+  graph = notYet("history graph");
   fileHistory = notYet("file history");
   diff = notYet("diff");
   listBranches = notYet("branch list");

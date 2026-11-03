@@ -181,6 +181,20 @@ describe.skipIf(!REMOTE)("SdkBackend (real Lore)", () => {
     expect((await b.history({ length: 1 }))[0]?.message).toBe("Ada edits main (amended)");
   });
 
+  it("graph: HEAD and unpushed flags, deduplicated across branches, newest first", async () => {
+    // work has the amended commit unpushed (ahead 1).
+    const g = await b.graph({ scope: "all", length: 50 });
+    expect(new Set(g.map((r) => r.hash)).size).toBe(g.length);
+    const head = g.find((r) => r.isHead);
+    expect(head).toMatchObject({ message: "Ada edits main (amended)", pending: true, branch: "main" });
+    expect(g.filter((r) => r.pending).map((r) => r.hash)).toEqual([head!.hash]);
+    for (let i = 1; i < g.length; i++) expect(g[i - 1]!.timestamp).toBeGreaterThanOrEqual(g[i]!.timestamp);
+    // Parents reference revisions in the set (linear history here).
+    const ids = new Set(g.map((r) => r.hash));
+    expect(g.filter((r) => r.parents.length).every((r) => r.parents.every((p) => ids.has(p)))).toBe(true);
+    expect((await b.graph({ scope: "current", length: 50 })).length).toBe(g.length);
+  });
+
   it("branches: create switches to it, list shows where it lives, protect/archive, switch back", async () => {
     const created = await b.createBranch("feature/it");
     expect(created).toMatchObject({ name: "feature/it", current: true, where: "local" });

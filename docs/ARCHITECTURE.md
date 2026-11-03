@@ -172,6 +172,21 @@ Observations: Electron 33 warns `--use-openssl-ca is not supported` when that `N
 
 ## 7. Phase status
 
+### Step C (revision graph timeline) — done
+
+An Anchorpoint/P4V-style history in the History tab: a graph rail (branch tracks, subway curves for forks and merges, icon nodes) next to commit cards grouped under author headers.
+
+- **Stack note:** the brief described Tauri + Tailwind. This project is Electron + React with CSS tokens, so the same design is built on the existing stack (no Tailwind). Icons come from `lucide-react` 0.462.0 (pinned): `Atom` for commits, `GitMerge` for merges, `CircleDashed` for the working copy.
+- **Data:** `rev:graph { scope: current | all, length }`. `SdkBackend.graph` merges `revisionHistory` for each non-archived branch (each continues into its parent branch, so overlaps dedupe by hash) and sorts newest first. It flags `isHead` (the revision the instance is on) and `pending`: unpushed revisions on the current branch (the newest `aheadBy` numbers), and every revision of a branch that exists only locally. Lore revision numbers are **not** unique across branches (main and a feature branch can both have #3), so the graph keys on hashes.
+- **Layout** (`src/renderer/graph/layout.ts`, pure, 9 unit tests): lane assignment walks newest → oldest. A revision lands in the lane expecting it, its first parent continues straight down, and extra (merge) parents open lanes to the right. Lanes never shift sideways, so pass-throughs are straight lines. The current branch keeps lane 0 and color 0 (`primaryBranch`). Output is per-row segments (`top|mid → mid|bottom`), so every row draws its own SVG slice. That keeps rails aligned at any row height and works with list virtualization (no full-height overlay). Each segment carries the parent edges running along it (`child>parent`), which is what hover highlighting uses.
+- **Rendering:** `RevisionGraphRail` (SVG: straight lines, cubic Bézier curves for lane changes, dashed for pending, filled node for HEAD), `TimelineRow` (author header with initials avatar, name and relative time; or commit card), `LoreTimelineView` (TanStack Virtual with two fixed row heights, scope toggle, hover state, ↑/↓ selection). A *Working copy · N local change(s)* node (dashed) sits above HEAD when there are local changes.
+- **Interaction:** hovering a commit thickens its parent edges and dims everything else. Clicking selects it (changed files appear below, and clicking a file diffs it against the parent). The right-click menu copies the hash or identifier or amends the message. Clicking the working-copy node jumps to Changes.
+- **Bug found by the new integration test:** `amend` gives the latest revision a new hash, but the backend didn't re-read repo state, so HEAD pointed at a revision that no longer exists. Fixed.
+
+Verified: `pnpm test` (100), `pnpm test:it` (18, incl. graph HEAD/pending/dedupe/order on real Lore). Visually checked on demo data and on a real Lore repository built with the CLI: a feature branch with 3 commits by one author, a commit on main, `lore branch merge feature/statues`, and one unpushed commit. The graph shows the fork, the merge node, the purple feature lane merging back, author grouping and a dashed unpushed HEAD. `smoke-phase3.cjs` now also checks the rail and the hover highlight.
+
+Not done: no inline branch-name labels on the rail (the branch is in the card tooltip). More than ~8 parallel lanes reuse colors. Only the newest 500 revisions are loaded (no paging yet).
+
 ### Phase 3 (history, diff, branches) + Step B (account, health, palette) — done
 
 **What the SDK actually returns (verified by probing, not assumed):**
@@ -193,6 +208,7 @@ Observations: Electron 33 warns `--use-openssl-ca is not supported` when that `N
 - **Repository → Update stored path** (`lore repository update-path`) for moved workspaces.
 
 **Verified**
+- Windows CI [run 9](https://github.com/wupy36/lore-desktop/actions/runs/41698670355): green, including the real-Lore integration tests and `smoke-phase3.cjs` against the packaged exe.
 - `pnpm test`: **87**. `pnpm test:it` against real Lore: **17**, covering history messages, timestamps, branch names and authors via identity; file history; text diff vs working tree and vs `main@1`; binary diff metadata; revision detail; amend; branch create (switches), list (local/both), switch, protect/unprotect/archive; account no-auth note and identity override; behind-by-1 after the other instance pushes, then sync.
 - `scripts/smoke-phase3.cjs` in the real app (SDK backend): History → revision → file → inline diff; file history; account dialog; Create & switch, then palette → *Switch to branch main*. Added to Windows CI against the packaged exe.
 

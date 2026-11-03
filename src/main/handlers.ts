@@ -99,6 +99,7 @@ export function createHandlers({ backend: b, runner, bus, info, openExternalDiff
     "rev:history": (o) => b.history(o),
     "file:history": ({ path, length }) => b.fileHistory(path, length),
     "rev:info": ({ revision }) => b.revisionDetail(revision),
+    "rev:graph": (o) => b.graph(o),
     "rev:amend": async ({ message }) => {
       await b.amend(message);
       changed("amend");
