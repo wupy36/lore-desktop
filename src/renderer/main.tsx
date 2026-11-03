@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ApiProvider } from "./api/client";
 import { App } from "./App";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import "./theme.css";
 
 const api = window.lore;
@@ -15,7 +16,9 @@ if (!api) {
     <StrictMode>
       <ApiProvider api={api}>
         <QueryClientProvider client={qc}>
-          <App />
+          <ErrorBoundary>
+            <App />
+          </ErrorBoundary>
         </QueryClientProvider>
       </ApiProvider>
     </StrictMode>,

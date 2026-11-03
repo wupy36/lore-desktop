@@ -3,12 +3,12 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { z } from "zod";
+import { Prefs } from "@shared/types";
 
 const Settings = z.object({
   lastRepo: z.string().nullable().default(null),
   recentRepos: z.array(z.string()).default([]),
-  /** Command template for binary diffs, e.g. `"C:\\Tools\\diff.exe" "{source}" "{target}"` (Phase 3). */
-  externalDiffTool: z.string().nullable().default(null),
+  prefs: Prefs.default({}),
 });
 export type Settings = z.infer<typeof Settings>;
 
@@ -27,7 +27,13 @@ export class SettingsStore {
       raw = {};
     }
     const parsed = Settings.safeParse(raw);
-    this.data = parsed.success ? parsed.data : Settings.parse({});
+    if (parsed.success) this.data = parsed.data;
+    else {
+      // Keep what is valid: a bad pref value must not wipe the recent-repository list.
+      const r = (raw ?? {}) as Record<string, unknown>;
+      const base = Settings.safeParse({ lastRepo: r.lastRepo, recentRepos: r.recentRepos });
+      this.data = base.success ? base.data : Settings.parse({});
+    }
   }
 
   get(): Settings {
@@ -38,6 +44,12 @@ export class SettingsStore {
     const recent = [path, ...this.data.recentRepos.filter((p) => p.toLowerCase() !== path.toLowerCase())].slice(0, MAX_RECENT);
     this.data = { ...this.data, lastRepo: path, recentRepos: recent };
     this.save();
+  }
+
+  setPrefs(patch: Partial<Prefs>): Prefs {
+    this.data = { ...this.data, prefs: Prefs.parse({ ...this.data.prefs, ...patch }) };
+    this.save();
+    return structuredClone(this.data.prefs);
   }
 
   forgetRepo(path: string): void {

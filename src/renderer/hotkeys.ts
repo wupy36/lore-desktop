@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useActions } from "./actions";
+import { useUi } from "./store/ui";
 
 /** Global hotkeys. Ctrl+Enter (commit) is handled by the message box itself. */
 export function useHotkeys() {
@@ -13,6 +14,12 @@ export function useHotkeys() {
       } else if (ctrl && e.shiftKey && e.key.toLowerCase() === "s") {
         e.preventDefault();
         void a.sync();
+      } else if (ctrl && e.key === ",") {
+        e.preventDefault();
+        useUi.getState().setModal("preferences");
+      } else if (ctrl && e.shiftKey && e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        useUi.getState().setModal("createRepository");
       } else if (ctrl && !e.shiftKey && e.key.toLowerCase() === "o") {
         e.preventDefault();
         void a.pickRepository();

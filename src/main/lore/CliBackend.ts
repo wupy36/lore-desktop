@@ -58,6 +58,9 @@ export class CliBackend implements LoreBackend {
   }
 
   cloneRepository = notYet("clone");
+  createRepository = notYet("repository create");
+  maintenance = notYet("repository maintenance");
+  exportFile = notYet("file write");
   listInstances = notYet("instance list");
   listRemoteRepositories = notYet("repository list");
   status = notYet("status");

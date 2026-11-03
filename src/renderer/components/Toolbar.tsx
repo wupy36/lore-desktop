@@ -3,10 +3,15 @@ import { useActions } from "../actions";
 import { useAppInfo, useRepo } from "../api/queries";
 import { useUi } from "../store/ui";
 
+/** `label` is "<icon> <text>"; narrow windows show only the icon (full text stays in the tooltip / accessible name). */
 function T({ label, kbd, title, disabled, onClick }: { label: string; kbd?: string; title: string; disabled?: boolean; onClick: () => void }) {
+  const m = /^(\S+)\s+(.+)$/.exec(label);
+  const icon = m && !/^[\w+−-]/.test(m[1] ?? "") ? m[1] : null;
+  const text = icon ? (m?.[2] ?? label) : label;
   return (
-    <button className="tbtn" title={`${title}${kbd ? ` (${kbd})` : ""}`} disabled={disabled} onClick={onClick}>
-      {label}
+    <button className="tbtn" title={`${title}${kbd ? ` (${kbd})` : ""}`} aria-label={text} disabled={disabled} onClick={onClick}>
+      {icon && <span className="ico">{icon}</span>}
+      <span className={icon ? "lbl" : undefined}>{text}</span>
       {kbd && <span className="kbd">{kbd}</span>}
     </button>
   );
@@ -29,6 +34,7 @@ export function Toolbar({ minimal = false }: { minimal?: boolean }) {
         <T label="📂 Open…" kbd="Ctrl+O" title="Open a Lore repository folder" onClick={() => void a.pickRepository()} />
         <span className="tspacer" />
         {info && <span className={`badge${info.backend === "mock" ? " mock" : ""}`}>{info.backend}</span>}
+        <T label="⚙ Preferences" kbd="Ctrl+," title="Preferences" onClick={() => useUi.getState().setModal("preferences")} />
       </div>
     );
   }
@@ -40,10 +46,10 @@ export function Toolbar({ minimal = false }: { minimal?: boolean }) {
       <T label="⟳ Refresh" kbd="F5" title="Rescan working tree (lore status --scan)" onClick={() => void a.refresh(true)} />
       <T label="⇣ Sync" kbd="Ctrl+Shift+S" title="Fetch and merge remote revisions (lore sync)" onClick={() => void a.sync()} />
       <span className="tsep" />
-      <T label="+ Stage" title="lore stage <paths>" disabled={!changed.some((f) => !f.staged)} onClick={() => void a.stage(changed)} />
-      <T label="− Unstage" title="lore unstage <paths>" disabled={!sel.some((f) => f.staged)} onClick={() => void a.unstage()} />
+      <T label="＋ Stage" title="lore stage <paths>" disabled={!changed.some((f) => !f.staged)} onClick={() => void a.stage(changed)} />
+      <T label="－ Unstage" title="lore unstage <paths>" disabled={!sel.some((f) => f.staged)} onClick={() => void a.unstage()} />
       <T label="↺ Reset" title="Discard local changes (lore reset <paths>)" disabled={!changed.length} onClick={() => void a.reset()} />
-      <T label="Revert unchanged" title="Clear dirty flags on files whose content matches (lore status --check-dirty)" onClick={() => void a.revertUnchanged()} />
+      <T label="≋ Revert unchanged" title="Clear dirty flags on files whose content matches (lore status --check-dirty)" onClick={() => void a.revertUnchanged()} />
       <span className="tsep" />
       <T label="✓ Commit" kbd="Ctrl+Enter" title="Focus commit message" onClick={() => (useUi.getState().setSidebarTab("changes"), setTimeout(() => document.querySelector<HTMLTextAreaElement>("textarea[aria-label='Commit message']")?.focus()))} />
       <T label="⇡ Push" title="Send local revisions to the remote (lore push)" disabled={!repo?.aheadBy} onClick={() => void a.push()} />
@@ -65,6 +71,7 @@ export function Toolbar({ minimal = false }: { minimal?: boolean }) {
       )}
       {!!repo?.aheadBy && <span className="badge ahead">{repo.aheadBy} to push</span>}
       {info && <span className={`badge${info.backend === "mock" ? " mock" : ""}`}>{info.backend}</span>}
+      <T label="⚙ Preferences" kbd="Ctrl+," title="Preferences" onClick={() => useUi.getState().setModal("preferences")} />
     </div>
   );
 }

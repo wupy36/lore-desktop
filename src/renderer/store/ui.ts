@@ -6,6 +6,7 @@ export type SidebarTab = "repository" | "workspace" | "changes";
 export type BottomTab = "console" | "transfers";
 export type ViewMode = "all" | "changed";
 export type DetailTab = "history" | "diff";
+export type Modal = "preferences" | "about" | "createRepository" | null;
 
 export interface UiState {
   sidebarTab: SidebarTab;
@@ -21,6 +22,7 @@ export interface UiState {
   focused: string | null;
   commitMessage: string;
   detailTab: DetailTab;
+  modal: Modal;
   layout: { sidebarW: number; detailW: number; bottomH: number };
 
   setSidebarTab(t: SidebarTab): void;
@@ -37,6 +39,7 @@ export interface UiState {
   /** Focus a file in the detail pane on the given tab. */
   openDetail(path: string, tab: DetailTab): void;
   setDetailTab(t: DetailTab): void;
+  setModal(m: Modal): void;
   setLayout(p: Partial<UiState["layout"]>): void;
 }
 
@@ -54,6 +57,7 @@ export const useUi = create<UiState>()((set, get) => ({
   focused: null,
   commitMessage: "",
   detailTab: "history",
+  modal: null,
   layout: { sidebarW: 300, detailW: 380, bottomH: 200 },
 
   setSidebarTab: (sidebarTab) => set({ sidebarTab }),
@@ -87,6 +91,7 @@ export const useUi = create<UiState>()((set, get) => ({
   setCommitMessage: (commitMessage) => set({ commitMessage }),
   openDetail: (path, detailTab) => set((s) => ({ detailTab, focused: path, selected: s.selected.has(path) ? s.selected : new Set([path]), anchor: s.anchor ?? path })),
   setDetailTab: (detailTab) => set({ detailTab }),
+  setModal: (modal) => set({ modal }),
   setLayout: (p) =>
     set((s) => ({
       layout: {

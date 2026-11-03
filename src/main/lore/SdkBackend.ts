@@ -15,7 +15,7 @@ import type * as Sdk from "@lore-vcs/sdk";
 import type * as SdkEnums from "@lore-vcs/sdk/types/enums";
 import type { LoreGlobalArgs } from "@lore-vcs/sdk/types/args";
 import type { LoreEventFFI } from "@lore-vcs/sdk/types/events";
-import type { FileEntry, Instance, RemoteRepo, RepoInfo, Revision, StatusResult } from "@shared/types";
+import type { FileEntry, Instance, MaintenanceOp, RemoteRepo, RepoInfo, Revision, StatusResult } from "@shared/types";
 import { LoreError, type CloneOptions, type LoreBackend, type OpContext, type StatusOptions, type SyncOptions } from "./LoreBackend";
 import {
   mapCloneProgress,
@@ -240,6 +240,48 @@ export class SdkBackend implements LoreBackend {
       this.treeCache = null;
       return this.refreshRepo(o.path);
     });
+  }
+
+  createRepository(o: { path: string; name: string; remoteUrl?: string }): Promise<RepoInfo> {
+    return this.serial(async () => {
+      const remote = o.remoteUrl?.replace(/\/+$/, "");
+      // Offline create takes the repository *name*; online create takes the full URL.
+      await this.run(this.sdk.lore.repositoryCreate({ ...this.globals(o.path), offline: !remote }, { repositoryUrl: remote ? `${remote}/${o.name}` : o.name }));
+      this.repo = null;
+      this.treeCache = null;
+      return this.refreshRepo(o.path);
+    });
+  }
+
+  maintenance(op: MaintenanceOp, ctx: OpContext): Promise<string> {
+    return this.serial(async () => {
+      const { LoreEventTag } = this.enums;
+      const l = this.sdk.lore;
+      const g = this.globals();
+      ctx.progress({ current: 0, total: null, unit: "items" });
+      switch (op) {
+        case "verify": {
+          let healed = false;
+          await this.run(l.repositoryVerifyState(g, {}), (e) => {
+            if (e.tag === LoreEventTag.REPOSITORY_VERIFY_STATE_END) healed = !/^0*$/.test(e.data.healedStagedState.toString());
+          });
+          return healed ? "Repository state verified (staged state was healed)" : "Repository state is consistent";
+        }
+        case "gc":
+          await this.run(l.repositoryGc(g, {}));
+          return "Garbage collection complete";
+        case "flush":
+          await this.run(l.repositoryFlush(g, {}));
+          return "Pending writes flushed";
+        case "prune":
+          await this.run(l.repositoryInstancePrune(g, {}));
+          return "Stale instances pruned";
+      }
+    });
+  }
+
+  exportFile(path: string, revision: string | undefined, outPath: string): Promise<void> {
+    return this.serial(() => this.run(this.sdk.lore.fileWrite(this.globals(), { path, output: outPath, ...(revision ? { revision } : {}) })));
   }
 
   listInstances(): Promise<Instance[]> {

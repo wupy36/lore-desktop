@@ -2,6 +2,7 @@
 // and output; main validates both directions (src/main/ipc.ts).
 import { z } from "zod";
 import {
+  AboutInfo,
   AuthInfo,
   Branch,
   DiffResult,
@@ -10,6 +11,8 @@ import {
   Instance,
   Lock,
   LogEntry,
+  MaintenanceOp,
+  Prefs,
   RemoteRepo,
   RepoInfo,
   Revision,
@@ -65,6 +68,15 @@ export const contract = {
   "view:get": { input: z.void(), output: z.object({ rules: z.array(z.string()) }) },
   "view:apply": { input: z.object({ rules: z.array(z.string()) }), output: OpHandle },
 
+  "prefs:get": { input: z.void(), output: Prefs },
+  "prefs:set": { input: Prefs.partial(), output: Prefs },
+  "app:about": { input: z.void(), output: AboutInfo },
+  /** Text of a bundled license; `external` licenses (large HTML) are opened in the system viewer instead. */
+  "app:license": { input: z.object({ id: z.string() }), output: z.object({ text: z.string().nullable() }) },
+  /** `lore repository create`: local-only when no remote is given (`--offline <name>`). */
+  "repo:create": { input: z.object({ path: z.string().min(1), name: z.string().regex(/^[\w.-]+$/, "letters, digits, . _ - only"), remoteUrl: z.string().optional() }), output: RepoInfo },
+  /** Repository maintenance (Manage menu): verify state, gc, flush, prune stale instances. */
+  "repo:maintenance": { input: z.object({ op: MaintenanceOp }), output: OpHandle },
   "op:cancel": { input: z.object({ opId: z.string() }), output: z.object({ cancelled: z.boolean() }) },
 } as const;
 
@@ -79,6 +91,9 @@ export const events = {
   transfer: Transfer,
   /** Workspace state changed (after a mutating op or an FS-watch trigger). */
   "ws:changed": z.object({ reason: z.string() }),
+  "prefs:changed": Prefs,
+  /** Menu-bar commands that open renderer screens. */
+  "ui:command": z.object({ command: z.enum(["preferences", "about", "createRepository", "openRepository"]) }),
 } as const;
 export type EventName = keyof typeof events;
 export type EventPayload<E extends EventName> = z.output<(typeof events)[E]>;

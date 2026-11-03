@@ -1,6 +1,7 @@
 // Channel -> backend call table. Pure (no Electron), so the same handlers
 // back real IPC (ipc.ts) and in-process test harnesses.
 import type { Channel, In, Out } from "@shared/ipc";
+import { defaultPrefs, Prefs, type AboutInfo } from "@shared/types";
 import type { Bus } from "./bus";
 import type { BackendKind, LoreBackend } from "./lore/LoreBackend";
 import type { OpRunner } from "./runner";
@@ -15,6 +16,10 @@ export interface HandlerDeps {
   openExternalDiff?: (input: In<"file:openExternalDiff">) => Promise<void>;
   /** Native folder picker (Electron dialog); returns null when cancelled. */
   pickDirectory?: () => Promise<string | null>;
+  /** Preference persistence; in-memory defaults when absent (tests, harnesses). */
+  prefs?: { get(): Prefs; set(patch: Partial<Prefs>): Prefs };
+  /** About screen data + bundled license texts (Electron-only). */
+  about?: { info(): Promise<AboutInfo>; license(id: string): Promise<string | null> };
   /** FS watcher hooks: paused around ops that write the working tree, restarted on open. */
   watcher?: { pause(): void; resume(): void; start(root: string): void };
   /** Backfill for the console panel. */
@@ -23,8 +28,10 @@ export interface HandlerDeps {
   recents?: { list(): string[]; remember(path: string): void };
 }
 
-export function createHandlers({ backend: b, runner, bus, info, openExternalDiff, pickDirectory, recents, logHistory, watcher }: HandlerDeps): Handlers {
+export function createHandlers({ backend: b, runner, bus, info, openExternalDiff, pickDirectory, recents, logHistory, watcher, prefs: prefsDep, about }: HandlerDeps): Handlers {
   const changed = (reason: string) => bus.emit("ws:changed", { reason });
+  let memPrefs = defaultPrefs();
+  const prefs = prefsDep ?? { get: () => memPrefs, set: (p: Partial<Prefs>) => (memPrefs = Prefs.parse({ ...memPrefs, ...p })) };
   /** Ops that write the working tree run with the watcher paused (their writes are not user edits). */
   const writesTree =
     <A extends unknown[]>(fn: (...a: A) => Promise<unknown>) =>
@@ -123,6 +130,34 @@ export function createHandlers({ backend: b, runner, bus, info, openExternalDiff
     "view:get": async () => ({ rules: await b.getView() }),
     "view:apply": async ({ rules }) => ({ opId: runner.start("view", "Apply view filter", writesTree((ctx) => b.applyView(rules, ctx)), { unit: "files", cancellable: b.canCancel }) }),
 
+    "prefs:get": async () => prefs.get(),
+    "prefs:set": async (patch) => {
+      const next = prefs.set(patch);
+      bus.emit("prefs:changed", next);
+      return next;
+    },
+    "app:about": async () =>
+      about
+        ? about.info()
+        : { app: "Lore Desktop", version: info.version, backend: info.backend, sdkVersion: null, electron: "", chrome: "", node: "", platform: info.platform, arch: "", userData: "", licenses: [] },
+    "app:license": async ({ id }) => ({ text: about ? await about.license(id) : null }),
+    "repo:create": async (o) => {
+      const r = opened(await b.createRepository(o));
+      recents?.remember(r.path);
+      changed("create");
+      return r;
+    },
+    "repo:maintenance": async ({ op }) => ({
+      opId: runner.start(
+        `repo-${op}`,
+        { verify: "Verify repository state", gc: "Garbage collection", flush: "Flush pending writes", prune: "Prune stale instances" }[op],
+        async (ctx) => {
+          const summary = await b.maintenance(op, ctx);
+          ctx.progress({ current: 1, total: 1, unit: "items", label: summary });
+        },
+        { cancellable: false },
+      ),
+    }),
     "op:cancel": async ({ opId }) => ({ cancelled: runner.cancel(opId) }),
   };
 }

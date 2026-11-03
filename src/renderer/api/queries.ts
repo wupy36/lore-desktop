@@ -1,7 +1,9 @@
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Channel, In } from "@shared/ipc";
+import type { Prefs } from "@shared/types";
 import { useActivity } from "../store/activity";
+import { useUi } from "../store/ui";
 import { useApi } from "./client";
 
 export const qk = {
@@ -17,6 +19,12 @@ export const qk = {
   locks: ["locks"] as const,
   auth: ["auth"] as const,
   view: ["view"] as const,
+  prefs: ["prefs"] as const,
+};
+
+export const usePrefs = () => {
+  const api = useApi();
+  return useQuery({ queryKey: qk.prefs, queryFn: () => api.invoke("prefs:get", undefined), staleTime: Infinity });
 };
 
 export const useAppInfo = () => {
@@ -78,6 +86,11 @@ export function useBusBridge() {
     const offs = [
       api.on("log", pushLog),
       api.on("transfer", upsertTransfer),
+      api.on("prefs:changed", (p) => qc.setQueryData<Prefs>(qk.prefs, p)),
+      api.on("ui:command", ({ command }) => {
+        if (command === "openRepository") void api.invoke("repo:pick", undefined);
+        else useUi.getState().setModal(command);
+      }),
       api.on("ws:changed", () => {
         if (timer) clearTimeout(timer);
         timer = setTimeout(() => {

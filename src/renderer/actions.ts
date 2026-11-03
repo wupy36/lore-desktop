@@ -3,7 +3,8 @@ import { useCallback, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { FileEntry } from "@shared/types";
 import { useApi } from "./api/client";
-import { qk, useFiles, useRepo } from "./api/queries";
+import { qk, useFiles, usePrefs, useRepo } from "./api/queries";
+import type { MaintenanceOp, Prefs } from "@shared/types";
 import { useActivity } from "./store/activity";
 import { useUi } from "./store/ui";
 
@@ -12,6 +13,7 @@ export function useActions() {
   const qc = useQueryClient();
   const files = useFiles().data;
   const repo = useRepo().data;
+  const prefs = usePrefs().data;
   const selected = useUi((s) => s.selected);
 
   const byPath = useMemo(() => new Map((files ?? []).map((f) => [f.path, f])), [files]);
@@ -48,7 +50,7 @@ export function useActions() {
       reset: (fs: FileEntry[] = sel, confirmFn: (m: string) => boolean = (m) => window.confirm(m)) => {
         const changed = fs.filter((f) => f.dirty || f.staged || f.action !== "none");
         if (!changed.length) return;
-        if (!confirmFn(`Discard local changes to ${changed.length} file(s)? This cannot be undone.`)) return;
+        if (prefs?.confirmReset !== false && !confirmFn(`Discard local changes to ${changed.length} file(s)? This cannot be undone.`)) return;
         return run("reset", () => api.invoke("ws:reset", { paths: paths(changed) }));
       },
       lock: (fs: FileEntry[] = sel) => fs.length && run("lock", () => api.invoke("lock:acquire", { paths: paths(fs) })),
@@ -59,7 +61,10 @@ export function useActions() {
           useUi.getState().setCommitMessage("");
         }),
       push: () => run("push", () => api.invoke("rev:push", {})),
-      sync: () => run("sync", () => api.invoke("rev:sync", {})),
+      sync: () => run("sync", () => api.invoke("rev:sync", prefs?.syncDiscardLocal ? { reset: true } : {})),
+      setPrefs: (patch: Partial<Prefs>) => run("preferences", () => api.invoke("prefs:set", patch)),
+      maintenance: (op: MaintenanceOp) => run(`repository ${op}`, () => api.invoke("repo:maintenance", { op })),
+      createRepository: (o: { path: string; name: string; remoteUrl?: string }) => run("create repository", () => api.invoke("repo:create", o)),
       switchBranch: (name: string) => run("switch", () => api.invoke("branch:switch", { name })),
       createBranch: (name: string) => run("create branch", () => api.invoke("branch:create", { name })),
       pickRepository: () => run("open repository", () => api.invoke("repo:pick", undefined)),
@@ -69,5 +74,5 @@ export function useActions() {
       cancel: (opId: string) => run("cancel", () => api.invoke("op:cancel", { opId })),
       openExternalDiff: (path: string) => run("external diff", () => api.invoke("file:openExternalDiff", { path })),
     };
-  }, [api, qc, run, selection, repo]);
+  }, [api, qc, run, selection, repo, prefs]);
 }

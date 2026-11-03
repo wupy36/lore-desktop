@@ -173,3 +173,41 @@ export function fileExt(path: string): string {
 /** Heuristic only (no Lore API marks binary-ness); used to pick inline vs external diff. */
 export const BINARY_EXTS: ReadonlySet<string> = new Set(["uasset", "umap", "png", "wav", "fbx", "bin", "ubulk", "uexp", "dll", "exe", "psd", "tga", "jpg"]);
 export const isBinaryPath = (path: string): boolean => BINARY_EXTS.has(fileExt(path));
+
+// ---- preferences (persisted in userData/settings.json) ----
+
+export const Prefs = z.object({
+  theme: z.enum(["dark", "light", "system"]).default("dark"),
+  fontSize: z.number().int().min(11).max(16).default(13),
+  density: z.enum(["compact", "comfortable"]).default("compact"),
+  /** Command line for binary/any-file diffs. Placeholders: {base} {local} {path}. Empty = not configured. */
+  externalDiffTool: z.string().max(2000).default(""),
+  reopenLastRepo: z.boolean().default(true),
+  /** Watch the working tree and refresh automatically (`lore dirty` + `status --check-dirty`). */
+  autoRefresh: z.boolean().default(true),
+  confirmReset: z.boolean().default(true),
+  /** Toolbar Sync discards local modifications to files the incoming revision changes (`sync --reset`). */
+  syncDiscardLocal: z.boolean().default(false),
+  /** Override for the Lore native library (LORE_LIB_PATH). Applies on next start. */
+  loreLibPath: z.string().max(2000).default(""),
+});
+export type Prefs = z.infer<typeof Prefs>;
+export const defaultPrefs = (): Prefs => Prefs.parse({});
+
+export const MaintenanceOp = z.enum(["verify", "gc", "flush", "prune"]);
+export type MaintenanceOp = z.infer<typeof MaintenanceOp>;
+
+export const AboutInfo = z.object({
+  app: z.string(),
+  version: z.string(),
+  backend: z.enum(["sdk", "cli", "mock"]),
+  sdkVersion: z.string().nullable(),
+  electron: z.string(),
+  chrome: z.string(),
+  node: z.string(),
+  platform: z.string(),
+  arch: z.string(),
+  userData: z.string(),
+  licenses: z.array(z.object({ id: z.string(), title: z.string(), external: z.boolean() })),
+});
+export type AboutInfo = z.infer<typeof AboutInfo>;

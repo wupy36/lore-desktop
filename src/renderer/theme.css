@@ -166,3 +166,37 @@ textarea.input { height: auto; padding: 4px 6px; resize: vertical; font-family: 
 .no-repo h1 { margin: 0; font-size: 20px; font-weight: 600; }
 .no-repo section { width: min(720px, 100%); border: 1px solid var(--border); }
 .no-repo code { font-family: var(--font-mono); font-size: 12px; user-select: text; }
+
+/* system theme: follow OS unless the user picked dark/light explicitly */
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] {
+    --bg-0: #ffffff; --bg-1: #f6f7f9; --bg-2: #eceef1; --bg-3: #e1e4e8; --border: #d0d4da;
+    --text: #1f2328; --text-dim: #57606a; --text-faint: #8c959f; --accent: #0969da; --accent-bg: #ddf4ff;
+    --sel-bg: #cfe3ff; --sel-bg-inactive: #e4e9f0; --st-modified: #9a6700; --st-staged: #0969da; --st-added: #1a7f37;
+    --st-deleted: #cf222e; --st-untracked: #57606a; --diff-add-bg: #dafbe1; --diff-del-bg: #ffebe9;
+    color-scheme: light;
+  }
+}
+:root[data-density="comfortable"] { --row-h: 28px; }
+
+/* modal */
+.modal-backdrop { position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,.45); display: flex; align-items: flex-start; justify-content: center; padding-top: 8vh; }
+.modal { max-width: calc(100vw - 32px); max-height: 84vh; display: flex; flex-direction: column; background: var(--bg-1); border: 1px solid var(--border); border-radius: 4px; box-shadow: 0 12px 40px rgba(0,0,0,.5); }
+.modal-header { display: flex; align-items: center; justify-content: space-between; height: 32px; padding: 0 8px 0 12px; background: var(--bg-2); border-bottom: 1px solid var(--border); font-weight: 600; }
+.modal-close { border: none; background: transparent; cursor: pointer; color: var(--text-dim); width: 24px; height: 24px; }
+.modal-body { overflow: auto; padding: 4px 8px 12px; }
+.pref-section { margin: 14px 4px 4px; font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: .04em; color: var(--text-dim); font-weight: 600; }
+.pref-row { display: grid; grid-template-columns: 1fr minmax(220px, 45%); gap: 12px; align-items: center; padding: 6px 4px; border-bottom: 1px solid var(--border); }
+.pref-control { display: flex; justify-content: flex-end; }
+.license-text { margin: 0; padding: 8px; max-height: 40vh; overflow: auto; white-space: pre-wrap; font: 12px/1.45 var(--font-mono); background: var(--bg-0); user-select: text; }
+
+/* narrow windows: drop shortcut hints before the filter box gets squeezed */
+.toolbar .input[aria-label="Filter path"] { min-width: 140px; }
+.toolbar .input, .toolbar select, .toolbar .badge { flex-shrink: 0; }
+.toolbar { overflow: hidden; }
+.tbtn .lbl:last-of-type:only-child { display: inline; }
+@media (max-width: 1750px) { .tbtn .kbd { display: none; } }
+@media (max-width: 1580px) { .tbtn .ico + .lbl { display: none; } .tbtn { padding: 0 6px; } }
+@media (max-width: 1100px) { .toolbar .badge:not(.mock) { display: none; } }
+/* the gear is always icon-only */
+.tbtn[aria-label="Preferences"] .lbl, .tbtn[aria-label="Preferences"] .kbd { display: none; }

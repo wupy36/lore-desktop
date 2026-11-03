@@ -61,6 +61,24 @@ export function RepositoryTab() {
         </button>
       </form>
 
+      <div className="group-title">
+        <span className="grow">Manage</span>
+      </div>
+      <div className="row" style={{ padding: 6, flexWrap: "wrap" }}>
+        <button className="mini" onClick={() => void actions.maintenance("verify")} title="lore repository verify state">
+          Verify state
+        </button>
+        <button className="mini" onClick={() => void actions.maintenance("gc")} title="lore repository gc — full garbage collection of the local store">
+          Garbage collect
+        </button>
+        <button className="mini" onClick={() => void actions.maintenance("flush")} title="lore repository flush">
+          Flush
+        </button>
+        <button className="mini" onClick={() => void actions.maintenance("prune")} title="lore repository instance prune — drop instances whose folders are gone">
+          Prune instances
+        </button>
+      </div>
+
       <CloneForm defaultUrl={remoteRoot(repo?.remoteUrl) ? `${remoteRoot(repo?.remoteUrl)}/` : ""} />
 
       <div className="group-title">

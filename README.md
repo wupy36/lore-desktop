@@ -55,6 +55,8 @@ node scripts/smoke-sdk-loop.cjs /path/to/repo loop.png   # edit -> watcher -> st
 | Ctrl+Shift+S | Sync |
 | Ctrl+Shift+P | Push |
 | Ctrl+O | Open repository |
+| Ctrl+Shift+N | New repository |
+| Ctrl+, | Preferences |
 | Ctrl+Enter | Commit (in message box) |
 | ↑/↓, PgUp/PgDn, Home/End (+Shift) | Move / extend selection in file table |
 | Ctrl+A | Select all |

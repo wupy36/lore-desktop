@@ -12,6 +12,7 @@ import type {
   RemoteRepo,
   RepoInfo,
   Revision,
+  MaintenanceOp,
   StatusResult,
 } from "@shared/types";
 import { generateMockRepo, mulberry32, type MockRepoData } from "./mock/fixtures";
@@ -99,7 +100,7 @@ export class MockBackend implements LoreBackend {
     return [...out];
   }
 
-  private async simulate(ctx: OpContext, unit: "files" | "fragments", total: number, label: string) {
+  private async simulate(ctx: OpContext, unit: "files" | "fragments" | "items", total: number, label: string) {
     const steps = this.opts.progressSteps;
     for (let i = 1; i <= steps; i++) {
       await sleep(this.opts.stepMs, ctx.signal);
@@ -135,6 +136,24 @@ export class MockBackend implements LoreBackend {
   async cloneRepository(o: CloneOptions, ctx: OpContext): Promise<RepoInfo> {
     await this.simulate(ctx, "files", this.data.files.length, `Clone ${o.url}`);
     return this.openRepository(o.path);
+  }
+
+  async createRepository(o: { path: string; name: string; remoteUrl?: string }): Promise<RepoInfo> {
+    await this.delay();
+    // Demo data stays the same; just "open" the new location under the given name.
+    const r = await this.openRepository(o.path);
+    this.repo = { ...r, name: o.name, remoteUrl: o.remoteUrl ? `${o.remoteUrl}/${o.name}` : null, offline: !o.remoteUrl };
+    return clone(this.repo);
+  }
+
+  async maintenance(op: MaintenanceOp, ctx: OpContext): Promise<string> {
+    this.requireRepo();
+    await this.simulate(ctx, "items", 100, `Repository ${op}`);
+    return { verify: "Repository state is consistent", gc: "Garbage collection complete", flush: "Pending writes flushed", prune: "No stale instances" }[op];
+  }
+
+  async exportFile(): Promise<void> {
+    throw new LoreError("External diff is not available with demo data");
   }
 
   async listInstances(): Promise<Instance[]> {

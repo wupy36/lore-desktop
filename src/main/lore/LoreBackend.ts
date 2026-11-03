@@ -11,6 +11,7 @@ import type {
   RemoteRepo,
   RepoInfo,
   Revision,
+  MaintenanceOp,
   StatusResult,
 } from "@shared/types";
 
@@ -62,6 +63,12 @@ export interface LoreBackend {
   openRepository(path: string): Promise<RepoInfo>;
   currentRepository(): RepoInfo | null;
   cloneRepository(opts: CloneOptions, ctx: OpContext): Promise<RepoInfo>;
+  /** `lore repository create`. No remote → local-only repository named `name` (`--offline`). */
+  createRepository(o: { path: string; name: string; remoteUrl?: string }): Promise<RepoInfo>;
+  /** Manage menu ops. Resolves to a one-line human summary. */
+  maintenance(op: MaintenanceOp, ctx: OpContext): Promise<string>;
+  /** Write `path` as of `revision` (default: the current revision) to `outPath` (`lore file write`). */
+  exportFile(path: string, revision: string | undefined, outPath: string): Promise<void>;
   listInstances(): Promise<Instance[]>;
   listRemoteRepositories(remoteUrl: string): Promise<RemoteRepo[]>;
 

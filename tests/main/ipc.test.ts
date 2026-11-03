@@ -87,3 +87,33 @@ describe("IPC contract", () => {
     expect(Object.keys(h).sort()).toEqual(Object.keys(contract).sort());
   });
 });
+
+describe("Step A channels", () => {
+  it("prefs: get/set validates and broadcasts", async () => {
+    const { api, bus } = await setup();
+    const seen: unknown[] = [];
+    bus.on("prefs:changed", (p) => seen.push(p));
+    expect((await api.invoke("prefs:get", undefined)).theme).toBe("dark");
+    const next = await api.invoke("prefs:set", { theme: "light", density: "comfortable" });
+    expect(next).toMatchObject({ theme: "light", density: "comfortable", fontSize: 13 });
+    expect(seen).toHaveLength(1);
+    await expect(api.invoke("prefs:set", { fontSize: 40 } as never)).rejects.toThrow(/Invalid input/);
+  });
+
+  it("repo:create validates the name and opens the new repository", async () => {
+    const { api } = await setup();
+    await expect(api.invoke("repo:create", { path: "/x", name: "bad name" })).rejects.toThrow(/Invalid input/);
+    const r = await api.invoke("repo:create", { path: "/x/New", name: "New", remoteUrl: "lore://h:1" });
+    expect(r).toMatchObject({ name: "New", remoteUrl: "lore://h:1/New", offline: false });
+  });
+
+  it("repo:maintenance runs as a non-cancellable transfer with a summary", async () => {
+    const { api, bus } = await setup();
+    const seen: Transfer[] = [];
+    const done = new Promise<void>((res) => bus.on("transfer", (t) => (seen.push(t), t.state !== "running" && res())));
+    await api.invoke("repo:maintenance", { op: "verify" });
+    await done;
+    expect(seen[0]).toMatchObject({ op: "repo-verify", cancellable: false });
+    expect(seen.at(-1)).toMatchObject({ state: "done", label: "Repository state is consistent" });
+  });
+});

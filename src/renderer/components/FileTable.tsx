@@ -5,11 +5,13 @@ import { flexRender, getCoreRowModel, getSortedRowModel, useReactTable, type Col
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { changeGroup, deriveFileState, fileExt, fileName, type FileEntry } from "@shared/types";
 import { useActions } from "../actions";
+import { usePrefs } from "../api/queries";
 import { useUi } from "../store/ui";
 import { formatSize } from "../selectors";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 
 export const ROW_H = 22;
+export const ROW_H_COMFORTABLE = 28;
 
 const columns: ColumnDef<FileEntry>[] = [
   { id: "name", header: "Name", accessorFn: (f) => fileName(f.path), size: 320 },
@@ -48,6 +50,7 @@ export function FileTable({ files, initialRect }: Props) {
   const selectAll = useUi((s) => s.selectAll);
   const openDetail = useUi((s) => s.openDetail);
   const actions = useActions();
+  const rowH = usePrefs().data?.density === "comfortable" ? ROW_H_COMFORTABLE : ROW_H;
 
   const table = useReactTable({
     data: files,
@@ -63,7 +66,7 @@ export function FileTable({ files, initialRect }: Props) {
   const ordered = useMemo(() => rows.map((r) => r.id), [rows]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const virt = useVirtualizer({ count: rows.length, getScrollElement: () => scrollRef.current, estimateSize: () => ROW_H, overscan: 20, initialRect });
+  const virt = useVirtualizer({ count: rows.length, getScrollElement: () => scrollRef.current, estimateSize: () => rowH, overscan: 20, initialRect });
   const totalW = table.getTotalSize();
 
   const moveFocus = useCallback(
@@ -79,7 +82,7 @@ export function FileTable({ files, initialRect }: Props) {
   );
 
   const onKeyDown = (e: React.KeyboardEvent) => {
-    const page = Math.max(1, Math.floor((scrollRef.current?.clientHeight ?? 400) / ROW_H) - 1);
+    const page = Math.max(1, Math.floor((scrollRef.current?.clientHeight ?? 400) / rowH) - 1);
     const map: Record<string, () => void> = {
       ArrowDown: () => moveFocus(1, e.shiftKey),
       ArrowUp: () => moveFocus(-1, e.shiftKey),
@@ -108,6 +111,7 @@ export function FileTable({ files, initialRect }: Props) {
   const anyChanged = sel.some((f) => changeGroup(f) !== null);
   const menuItems: MenuEntry[] = [
     { label: "Diff", shortcut: "Enter", disabled: sel.length !== 1, onSelect: () => sel[0] && openDetail(sel[0].path, "diff") },
+    { label: "Open in external diff tool", disabled: sel.length !== 1 || sel[0]?.action === "add", onSelect: () => sel[0] && void actions.openExternalDiff(sel[0].path) },
     { label: "History", disabled: sel.length !== 1, onSelect: () => sel[0] && openDetail(sel[0].path, "history") },
     "sep",
     { label: "Stage", disabled: !sel.some((f) => !f.staged && changeGroup(f) !== null), onSelect: () => void actions.stage() },

@@ -1,6 +1,7 @@
 import { useActions } from "../actions";
 import { useAppInfo, useRecentRepos } from "../api/queries";
 import { CloneForm } from "./CloneForm";
+import { CreateRepoForm } from "./CreateRepoForm";
 
 /** Shown instead of the panes until a repository is open (e.g. first launch of the installed app). */
 export function NoRepository() {
@@ -27,6 +28,9 @@ export function NoRepository() {
       )}
       <section aria-label="Clone">
         <CloneForm />
+      </section>
+      <section aria-label="New repository">
+        <CreateRepoForm />
       </section>
       <p className="hint">
         Or from a terminal: <code>lore clone lore://host:41337/name C:\path</code>. Backend: {info?.backend ?? "…"} · v{info?.version ?? ""}

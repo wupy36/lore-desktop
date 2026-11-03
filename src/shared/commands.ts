@@ -57,6 +57,9 @@ export const cli = {
     o.path,
   ],
   repoInfo: (): Argv => ["repository", "info"],
+  repoCreate: (o: { name: string; remoteUrl?: string }): Argv => (o.remoteUrl ? ["repository", "create", `${o.remoteUrl.replace(/\/+$/, "")}/${o.name}`] : ["--offline", "repository", "create", o.name]),
+  maintenance: (op: "verify" | "gc" | "flush" | "prune"): Argv => ({ verify: ["repository", "verify", "state"], gc: ["repository", "gc"], flush: ["repository", "flush"], prune: ["repository", "instance", "prune"] })[op],
+  fileWrite: (path: string, output: string, revision?: string): Argv => ["file", "write", "--path", path, ...(revision ? ["--revision", revision] : []), "--output", output],
   repoList: (remoteUrl: string): Argv => ["repository", "list", remoteUrl],
   instanceList: (): Argv => ["repository", "instance", "list"],
 } as const;

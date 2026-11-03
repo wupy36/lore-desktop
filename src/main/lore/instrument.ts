@@ -31,6 +31,9 @@ const commandFor: Partial<Record<keyof LoreBackend, CmdBuilder>> = {
   authInfo: cli.authInfo,
   cloneRepository: cli.clone,
   openRepository: cli.repoInfo,
+  createRepository: cli.repoCreate,
+  maintenance: cli.maintenance,
+  exportFile: (p: string, rev: string | undefined, out: string) => cli.fileWrite(p, out, rev),
   listRemoteRepositories: cli.repoList,
   listInstances: cli.instanceList,
 };

@@ -1,6 +1,6 @@
 // Real Lore: SdkBackend against a running loreserver. Skipped unless
 // LORE_IT_REMOTE is set, e.g.  LORE_IT_REMOTE=lore://127.0.0.1:41337 pnpm test:it
-import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -100,6 +100,34 @@ describe.skipIf(!REMOTE)("SdkBackend (real Lore)", () => {
     expect(inst.map((i) => i.path)).toEqual([seedPath]);
     const remotes = await b.listRemoteRepositories(REMOTE as string);
     expect(remotes.some((r) => r.name === name)).toBe(true);
+  });
+
+  it("exports a file as of a revision (lore file write) for the external diff tool", async () => {
+    await b.openRepository(join(root, "work"));
+    const out = join(root, "base_main.cpp");
+    await b.exportFile("Source/main.cpp", undefined, out);
+    expect(readFileSync(out, "utf8")).toBe("int main(){}\n");
+  });
+
+  it("repository maintenance: verify, gc, flush, prune", async () => {
+    for (const op of ["verify", "gc", "flush", "prune"] as const) {
+      const msg = await b.maintenance(op, ctx());
+      expect(msg.length, op).toBeGreaterThan(5);
+    }
+  });
+
+  it("creates a local-only repository, then a server repository", async () => {
+    const local = await b.createRepository({ path: join(root, "LocalOnly"), name: "LocalOnly" });
+    expect(local).toMatchObject({ name: "LocalOnly", offline: true });
+    expect(existsSync(join(root, "LocalOnly", ".lore"))).toBe(true);
+    writeFileSync(join(root, "LocalOnly", "a.txt"), "a\n");
+    await b.stage(["a.txt"]);
+    expect((await b.commit("local")).number).toBe(1);
+
+    const onlineName = `${name}Created`;
+    const online = await b.createRepository({ path: join(root, onlineName), name: onlineName, remoteUrl: REMOTE as string });
+    expect(online).toMatchObject({ offline: false, remoteUrl: `${REMOTE}/${onlineName}` });
+    expect((await b.listRemoteRepositories(REMOTE as string)).some((r) => r.name === onlineName)).toBe(true);
   });
 
   it("reports Lore errors as LoreError with the message", async () => {

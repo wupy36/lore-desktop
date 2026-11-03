@@ -7,19 +7,20 @@
   "license": "MIT",
   "main": "./out/main/index.js",
   "scripts": {
-    "dev": "electron-vite dev",
-    "dev:mock": "electron-vite dev -- --mock",
-    "build": "electron-vite build",
+    "dev": "node scripts/gen-licenses.mjs && electron-vite dev",
+    "dev:mock": "node scripts/gen-licenses.mjs && electron-vite dev -- --mock",
+    "build": "node scripts/gen-licenses.mjs && electron-vite build",
     "start": "electron-vite preview",
     "start:mock": "electron-vite preview -- --mock",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "lint": "eslint .",
     "test": "vitest run",
     "spike": "node spike/sdk-spike.mjs",
-    "dist:win": "electron-vite build && electron-builder --win nsis portable --x64 --publish never",
-    "dist:dir": "electron-vite build && electron-builder --dir --publish never",
-    "dist:win:native": "electron-vite build && electron-builder --win nsis portable --x64 --publish never -c.win.signAndEditExecutable=true",
-    "test:it": "vitest run -c vitest.it.config.ts"
+    "dist:win": "node scripts/gen-licenses.mjs && electron-vite build && electron-builder --win nsis portable --x64 --publish never",
+    "dist:dir": "node scripts/gen-licenses.mjs && electron-vite build && electron-builder --dir --publish never",
+    "dist:win:native": "node scripts/gen-licenses.mjs && electron-vite build && electron-builder --win nsis portable --x64 --publish never -c.win.signAndEditExecutable=true",
+    "test:it": "vitest run -c vitest.it.config.ts",
+    "licenses": "node scripts/gen-licenses.mjs"
   },
   "dependencies": {
     "@lore-vcs/sdk": "0.12.0"

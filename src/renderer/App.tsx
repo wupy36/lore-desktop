@@ -1,5 +1,9 @@
-import { useMemo } from "react";
-import { useFiles, useBusBridge, useRepo } from "./api/queries";
+import { useEffect, useMemo } from "react";
+import { useFiles, useBusBridge, usePrefs, useRepo } from "./api/queries";
+import { AboutDialog } from "./components/AboutDialog";
+import { CreateRepoForm } from "./components/CreateRepoForm";
+import { Modal } from "./components/Modal";
+import { PreferencesDialog } from "./components/PreferencesDialog";
 import { BottomPanel } from "./components/BottomPanel/BottomPanel";
 import { DetailPane } from "./components/DetailPane";
 import { FileTable } from "./components/FileTable";
@@ -20,9 +24,37 @@ const TABS: { id: SidebarTab; label: string }[] = [
   { id: "changes", label: "Changes" },
 ];
 
+/** Theme / font size / density from preferences → attributes and CSS variables on <html>. */
+function useApplyPrefs() {
+  const prefs = usePrefs().data;
+  useEffect(() => {
+    if (!prefs) return;
+    const el = document.documentElement;
+    el.dataset.theme = prefs.theme;
+    el.dataset.density = prefs.density;
+    el.style.setProperty("--fs", `${prefs.fontSize}px`);
+    el.style.setProperty("--fs-sm", `${prefs.fontSize - 1}px`);
+  }, [prefs]);
+}
+
+function Modals() {
+  const modal = useUi((s) => s.modal);
+  const close = () => useUi.getState().setModal(null);
+  if (modal === "preferences") return <PreferencesDialog onClose={close} />;
+  if (modal === "about") return <AboutDialog onClose={close} />;
+  if (modal === "createRepository")
+    return (
+      <Modal title="New repository" onClose={close}>
+        <CreateRepoForm onDone={close} />
+      </Modal>
+    );
+  return null;
+}
+
 export function App() {
   useBusBridge();
   useHotkeys();
+  useApplyPrefs();
   const files = useFiles();
   const repoQ = useRepo();
   const repo = repoQ.data;
@@ -37,6 +69,7 @@ export function App() {
         <Toolbar minimal />
         <NoRepository />
         <footer className="statusbar">{lastError && <span className="err">⚠ {lastError}</span>}</footer>
+        <Modals />
       </div>
     );
   }
@@ -80,6 +113,7 @@ export function App() {
         <span>{(files.data?.length ?? 0).toLocaleString()} files</span>
         {lastError && <span className="err" title={lastError}>⚠ {lastError}</span>}
       </footer>
+      <Modals />
     </div>
   );
 }
