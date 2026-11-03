@@ -81,9 +81,45 @@ describe("MockBackend", () => {
     await expect(b.lockAcquire([foreign!.path])).rejects.toThrow(/locked by/);
     const free = (await b.listFiles()).find((f) => f.binary && !f.lockOwner)!;
     const got = await b.lockAcquire([free.path]);
-    expect(got[0]?.owner).toBe("me@studio.dev");
-    await b.lockRelease([free.path]);
+    expect(got).toEqual({ acquired: [free.path], alreadyLocked: [] });
+    expect(await b.lockAcquire([free.path])).toEqual({ acquired: [], alreadyLocked: [free.path] });
+    expect((await b.lockStatus([free.path]))[0]?.owner).toBe("me@studio.dev");
+    await expect(b.lockRelease([foreign!.path])).rejects.toThrow(/owner action/);
+    expect(await b.lockRelease([free.path])).toEqual({ released: [free.path], notFound: false });
     expect((await b.lockQuery({ path: free.path })).length).toBe(0);
+    expect((await b.lockRelease([foreign!.path], { owner: foreign!.owner })).released).toEqual([foreign!.path]);
+  });
+
+  it("dependencies: add, list (direct/recursive/reverse), remove", async () => {
+    const files = (await b.listFiles()).map((f) => f.path);
+    const map = files.find((p) => p.endsWith(".umap"))!;
+    const hero = files.find((p) => /^Content\/Characters\/Hero\/.*\.uasset$/.test(p))!;
+    const tex = files.find((p) => p.endsWith(".png"))!;
+    const cfg = files.find((p) => p.endsWith(".ini"))!;
+    expect((await b.dependencies(map, {})).map((d) => d.path)).toEqual([hero, tex]);
+    expect((await b.dependencies(tex, { reverse: true, recursive: true })).map((d) => [d.path, d.depth])).toEqual([
+      [map, 0],
+      [hero, 0],
+    ]);
+    await b.dependencyAdd(tex, [cfg], ["cfg"]);
+    expect((await b.dependencies(map, { recursive: true })).find((d) => d.path === cfg)).toMatchObject({ depth: 1, tags: ["cfg"] });
+    await b.dependencyRemove(tex, [cfg]);
+    expect((await b.dependencies(tex, {})).length).toBe(0);
+    await expect(b.dependencyAdd(map, [map])).rejects.toThrow(/itself/);
+  });
+
+  it("view preview: removing a folder from the view lists its files", async () => {
+    const view = await b.getView();
+    expect(view).toContain("*");
+    // `Source/Engine/` alone would not do it: each file still matches `!Source/**` itself.
+    expect((await b.previewView([...view, "Source/Engine/"])).remove).toEqual([]);
+    const p = await b.previewView([...view, "Source/Engine/**"]);
+    expect(p.remove.length).toBeGreaterThan(100);
+    expect(p.remove.every((f) => f.path.startsWith("Source/Engine/"))).toBe(true);
+    expect(p.materialize).toEqual([]);
+    const all = await b.previewView([]);
+    expect(all.remove).toEqual([]);
+    expect(all.materialize.some((f) => f.path.startsWith("Content/Weapons/"))).toBe(true);
   });
 
   it("long ops honour cancellation", async () => {

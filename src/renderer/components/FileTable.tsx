@@ -30,7 +30,11 @@ const columns: ColumnDef<FileEntry>[] = [
     header: "Lock owner",
     accessorFn: (f) => f.lockOwner ?? "",
     size: 150,
-    cell: (c) => (c.getValue<string>() ? <span className="lock">🔒 {c.getValue<string>()}</span> : ""),
+    cell: (c) => {
+      const v = c.getValue<string>();
+      if (!v) return "";
+      return <span className="lock">🔒 {v === "<unknown>" ? "locked" : v}</span>;
+    },
   },
   { id: "dir", header: "Folder", accessorFn: (f) => f.path.slice(0, Math.max(0, f.path.lastIndexOf("/"))), size: 360, meta: { dim: true } },
 ];
@@ -121,7 +125,10 @@ export function FileTable({ files, initialRect }: Props) {
     { label: "Lock", disabled: !sel.length || sel.every((f) => !!f.lockOwner), onSelect: () => void actions.lock() },
     { label: "Release lock", disabled: !sel.some((f) => f.lockOwner), onSelect: () => void actions.release() },
     "sep",
-    { label: "Prefetch / include in view", disabled: true, onSelect: () => {} }, // Phase 4
+    { label: "Include in view (fetch)…", disabled: sel.length !== 1, onSelect: () => sel[0] && useUi.getState().openViewEditor(`!${sel[0].path}`) },
+    { label: "Exclude from view…", disabled: sel.length !== 1, onSelect: () => sel[0] && useUi.getState().openViewEditor(sel[0].path) },
+    { label: "Sync with dependencies", disabled: !sel.length, onSelect: () => void actions.syncWithDependencies(sel.map((f) => f.path)) },
+    { label: "Dependencies", disabled: sel.length !== 1, onSelect: () => sel[0] && openDetail(sel[0].path, "deps") },
   ];
 
   return (

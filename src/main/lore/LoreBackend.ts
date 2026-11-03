@@ -8,7 +8,11 @@ import type {
   FileRevision,
   GraphRevision,
   Instance,
+  DependencyEntry,
   Lock,
+  LockResult,
+  ReleaseResult,
+  ViewPreview,
   RemoteRepo,
   RepoInfo,
   Revision,
@@ -47,7 +51,10 @@ export interface SyncOptions {
   revision?: string; // revision identifier, e.g. `main@LATEST`
   reset?: boolean;
   viewFile?: string;
+  /** Dependency-based selective sync (`--root-file`): only these files and their dependencies. */
   rootFiles?: string[];
+  dependencyRecursive?: boolean;
+  dependencyTags?: string[];
 }
 
 export interface CloneOptions {
@@ -103,9 +110,15 @@ export interface LoreBackend {
   createBranch(name: string): Promise<Branch>;
   branchAction(name: string, action: BranchAction): Promise<void>;
 
-  lockAcquire(paths: string[]): Promise<Lock[]>;
-  lockRelease(paths: string[]): Promise<void>;
+  /** Paths already locked are reported, not failed (Lore reports them as `ignored`). */
+  lockAcquire(paths: string[]): Promise<LockResult>;
+  lockRelease(paths: string[], opts?: { owner?: string }): Promise<ReleaseResult>;
+  lockStatus(paths: string[]): Promise<Lock[]>;
   lockQuery(q: { branch?: string; owner?: string; path?: string }): Promise<Lock[]>;
+
+  dependencies(path: string, opts: { reverse?: boolean; recursive?: boolean }): Promise<DependencyEntry[]>;
+  dependencyAdd(path: string, dependencies: string[], tags?: string[]): Promise<void>;
+  dependencyRemove(path: string, dependencies: string[]): Promise<void>;
 
   authInfo(): Promise<AuthInfo>;
   /** Browser/device login against the repository's server; `onPrompt` receives the URL + code to show. */
@@ -115,6 +128,8 @@ export interface LoreBackend {
   setIdentity(identity: string | null): void;
 
   getView(): Promise<string[]>;
+  /** Dry run of applying `rules` as the view. */
+  previewView(rules: string[]): Promise<ViewPreview>;
   /** Write the view filter and re-materialize (`sync --view <file>`). */
   applyView(rules: string[], ctx: OpContext): Promise<void>;
 

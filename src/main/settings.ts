@@ -9,6 +9,8 @@ const Settings = z.object({
   lastRepo: z.string().nullable().default(null),
   recentRepos: z.array(z.string()).default([]),
   prefs: Prefs.default({}),
+  /** View rules as the user wrote them (Lore stores them normalized), per repository path. */
+  viewDrafts: z.record(z.string(), z.array(z.string())).default({}),
 });
 export type Settings = z.infer<typeof Settings>;
 
@@ -31,7 +33,7 @@ export class SettingsStore {
     else {
       // Keep what is valid: a bad pref value must not wipe the recent-repository list.
       const r = (raw ?? {}) as Record<string, unknown>;
-      const base = Settings.safeParse({ lastRepo: r.lastRepo, recentRepos: r.recentRepos });
+      const base = Settings.safeParse({ lastRepo: r.lastRepo, recentRepos: r.recentRepos, viewDrafts: r.viewDrafts });
       this.data = base.success ? base.data : Settings.parse({});
     }
   }
@@ -43,6 +45,11 @@ export class SettingsStore {
   rememberRepo(path: string): void {
     const recent = [path, ...this.data.recentRepos.filter((p) => p.toLowerCase() !== path.toLowerCase())].slice(0, MAX_RECENT);
     this.data = { ...this.data, lastRepo: path, recentRepos: recent };
+    this.save();
+  }
+
+  setViewDraft(repoPath: string, rules: string[]): void {
+    this.data = { ...this.data, viewDrafts: { ...this.data.viewDrafts, [repoPath]: rules } };
     this.save();
   }
 

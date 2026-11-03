@@ -88,6 +88,11 @@ export class CliBackend implements LoreBackend {
   lockAcquire = notYet("lock acquire");
   lockRelease = notYet("lock release");
   lockQuery = notYet("lock query");
+  lockStatus = notYet("lock status");
+  dependencies = notYet("file dependency list");
+  dependencyAdd = notYet("file dependency add");
+  dependencyRemove = notYet("file dependency remove");
+  previewView = notYet("sync --view --dry-run");
   authInfo = notYet("auth info");
   getView = notYet("view");
   applyView = notYet("view apply");

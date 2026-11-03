@@ -144,7 +144,8 @@ export function generateMockRepo(seed = 1337): MockRepoData {
     { name: "Cinematics", id: hex(rnd, 32), url: "lore://127.0.0.1:41337/Cinematics", description: "Sequencer assets" },
   ];
 
-  return { files, revisions, branches, locks, remotes, view: ["Source/**", "Config/**", "Content/Characters/**", "Content/Maps/**"] };
+  // Lore view syntax: lines exclude, `!` re-includes (see viewMatcher).
+  return { files, revisions, branches, locks, remotes, view: ["# Work on code, characters and maps only", "*", "!Source/**", "!Config/**", "!Content/Characters/**", "!Content/Maps/**", "!*.uproject", "!.loreignore"] };
 }
 
 /** Branched history for the graph view, derived from the linear main history
@@ -188,4 +189,54 @@ export function generateMockGraph(main: readonly Revision[], seed = 7): (Revisio
   const m238 = at(238);
   if (m238) chain("feature/ui-polish", m238, 3, (at(240) as Revision).timestamp, 600_000, () => "me@studio.dev", true);
   return out;
+}
+
+/** Lore's view filter semantics for the mock, calibrated against `sync --view --dry-run` on
+ * loreserver 0.12 (see tests/integration): every line EXCLUDES, `!` re-includes, `#` comments.
+ *  - The last rule matching the file ITSELF decides. A pattern without `/` matches the file's name at
+ *    any depth (`*`, `*.uasset`); one with `/` matches the path from the root (`Content/**`, `/Game.ini`).
+ *  - `dir/` matches directories only. A file matched by no rule inherits the verdict of its nearest
+ *    ancestor directory that some rule matched (so `Source/` excludes everything below it).
+ *  - Consequence: `*` + `!Source/` keeps nothing under Source (each file matches `*`); include a
+ *    folder with `!Source/**`, and exclude a sub-folder of an included one with `Sub/**`.
+ *  - Matching is case-insensitive; Lore rewrites .lore/view lowercased, without comments.
+ * The real backend never uses this; it asks Lore (dry-run sync). Returns "is this path materialized?". */
+export function viewMatcher(rules: readonly string[]): (path: string) => boolean {
+  const compiled = rules.flatMap((raw) => {
+    let g = raw.trim();
+    if (!g || g.startsWith("#")) return [];
+    let include = false;
+    while (g.startsWith("!")) {
+      include = !include;
+      g = g.slice(1);
+    }
+    if (g.startsWith("\\!")) g = g.slice(1);
+    const dirOnly = g.endsWith("/");
+    const body = g.replace(/^\//, "").replace(/\/+$/, "");
+    const anchored = g.startsWith("/") || body.includes("/");
+    const re = body
+      .split("**")
+      .map((part) => part.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^/]*").replace(/\?/g, "[^/]"))
+      .join(".*");
+    // Lore stores and matches view rules case-insensitively (it lowercases them in .lore/view).
+    return [{ include, dirOnly, anchored, rx: new RegExp(`^${re}$`, "i") }];
+  });
+  const own = (path: string, isDir: boolean): boolean | null => {
+    const name = path.slice(path.lastIndexOf("/") + 1);
+    let verdict: boolean | null = null;
+    for (const r of compiled) {
+      if (r.dirOnly && !isDir) continue;
+      if (r.rx.test(r.anchored ? path : name)) verdict = r.include;
+    }
+    return verdict;
+  };
+  return (path) => {
+    for (let p = path, isDir = false; p; isDir = true) {
+      const v = own(p, isDir);
+      if (v !== null) return v;
+      const i = p.lastIndexOf("/");
+      p = i < 0 ? "" : p.slice(0, i);
+    }
+    return true;
+  };
 }

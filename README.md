@@ -2,7 +2,7 @@
 
 An open-source, essentials-only desktop GUI for the [Lore](https://github.com/EpicGames/lore) version control system. Dense, dark-first, multi-pane, table-centric — layout inspired by P4V, semantics strictly Lore's.
 
-> Status: Phase 3 + Step B. On a real repository (SDK backend): open/clone/create, full file tree, status with FS-watcher refresh, stage/unstage/reset, commit, push, sync, history, file history, text/binary diff, branches (create/switch/protect/archive), account & commit identity, working-copy health, command palette. Locks and views (Phase 4) run on mock data only. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+> Status: Phases 0–4 + Steps A–C. On a real repository (SDK backend): open/clone/create, full file tree, status with FS-watcher refresh, stage/unstage/reset, commit, push, sync, history graph, file history, text/binary diff, branches, account & commit identity, working-copy health, command palette, advisory locks, workspace view editor with dry-run preview, file dependencies and dependency-based sync. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Install on Windows
 
@@ -45,6 +45,8 @@ Smoke tests on the built app (need a display; use `xvfb-run -a` on headless Linu
 node scripts/smoke-mock.cjs mock.png
 node scripts/smoke-sdk.cjs /path/to/repo sdk.png
 node scripts/smoke-sdk-loop.cjs /path/to/repo loop.png   # edit -> watcher -> stage -> commit -> push
+node scripts/smoke-phase3.cjs /path/to/repo .            # history graph, diff, account, branches, palette
+node scripts/smoke-phase4.cjs /path/to/repo .            # locks, dependencies, workspace view
 ```
 
 ## Hotkeys

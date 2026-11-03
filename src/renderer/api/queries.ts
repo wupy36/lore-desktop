@@ -84,6 +84,15 @@ export const useLocks = () => {
   const api = useApi();
   return useQuery({ queryKey: qk.locks, queryFn: () => api.invoke("lock:query", {}), enabled: useHasRepo() });
 };
+export const useDependencies = (path: string | null, o: { reverse?: boolean; recursive?: boolean }) => {
+  const api = useApi();
+  return useQuery({ queryKey: ["deps", path ?? "", !!o.reverse, !!o.recursive], queryFn: () => api.invoke("deps:list", { path: path as string, ...o }), enabled: !!path });
+};
+export const useView = (enabled: boolean) => {
+  const api = useApi();
+  const hasRepo = useHasRepo();
+  return useQuery({ queryKey: qk.view, queryFn: () => api.invoke("view:get", undefined), enabled: enabled && hasRepo });
+};
 
 /** Bridge bus events -> activity store + query invalidation (debounced). */
 export function useBusBridge() {
@@ -100,12 +109,13 @@ export function useBusBridge() {
       api.on("auth:prompt", (p) => useUi.getState().setAuthPrompt(p)),
       api.on("ui:command", ({ command }) => {
         if (command === "openRepository") void api.invoke("repo:pick", undefined);
+        else if (command === "view") useUi.getState().openViewEditor();
         else useUi.getState().setModal(command);
       }),
       api.on("ws:changed", () => {
         if (timer) clearTimeout(timer);
         timer = setTimeout(() => {
-          for (const key of [qk.files, qk.repo, ["recent"], qk.auth, ["graph"], qk.branches, qk.locks, ["history"], ["fileHistory"], ["diff"]]) void qc.invalidateQueries({ queryKey: key });
+          for (const key of [qk.files, qk.repo, ["recent"], qk.auth, ["graph"], ["deps"], qk.view, qk.branches, qk.locks, ["history"], ["fileHistory"], ["diff"]]) void qc.invalidateQueries({ queryKey: key });
         }, 100);
       }),
     ];

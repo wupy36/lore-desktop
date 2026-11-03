@@ -9,7 +9,8 @@
 // Every call is serialized through one queue: Lore takes a repository lock per
 // operation, and running e.g. a status refresh concurrently with a sync would
 // only contend on it.
-import { stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join, normalize } from "node:path";
 import type * as Sdk from "@lore-vcs/sdk";
 import type * as SdkEnums from "@lore-vcs/sdk/types/enums";
@@ -22,8 +23,13 @@ import {
   type BranchAction,
   type DiffResult,
   type FileEntry,
+  type DependencyEntry,
   type FileRevision,
   type GraphRevision,
+  type Lock,
+  type LockResult,
+  type ReleaseResult,
+  type ViewPreview,
   type Instance,
   type MaintenanceOp,
   type RemoteRepo,
@@ -52,7 +58,6 @@ type SdkModule = typeof Sdk;
 type EnumsModule = typeof SdkEnums;
 type Fluent = { callback(fn: (e: LoreEventFFI) => void): { waitAsync(): Promise<number> } };
 
-const notYet = (op: string, phase: number) => () => Promise.reject(new LoreError(`${op}: not implemented in SdkBackend yet (Phase ${phase})`));
 const baseName = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
 const TREE_CONCURRENCY = 8;
 /** Inline diffs above this are shown as binary/metadata (use the external diff tool). */
@@ -367,7 +372,14 @@ export class SdkBackend implements LoreBackend {
             f.size = await stat(join(repo.path, f.path)).then((st) => st.size, () => 0);
           }),
       );
-      return mergeTreeAndStatus(tree, changed);
+      const merged = mergeTreeAndStatus(tree, changed);
+      // Lock owner column: one query for the current branch (locks are few; files are many).
+      const locks = await this.lockQueryRaw({ branch: repo.branch }).catch(() => [] as Lock[]);
+      if (locks.length) {
+        const owner = new Map(locks.map((l) => [l.path, l.owner]));
+        for (const f of merged) f.lockOwner = owner.get(f.path) ?? null;
+      }
+      return merged;
     });
   }
 
@@ -446,6 +458,8 @@ export class SdkBackend implements LoreBackend {
           reset: !!o.reset,
           ...(o.viewFile ? { view: o.viewFile } : {}),
           ...(o.rootFiles?.length ? { rootFiles: o.rootFiles } : {}),
+          ...(o.dependencyRecursive ? { dependencyRecursive: true } : {}),
+          ...(o.dependencyTags?.length ? { dependencyTags: o.dependencyTags } : {}),
         }),
         (e) => {
           if (e.tag === LoreEventTag.REVISION_SYNC_PROGRESS) ctx.progress(mapSyncProgress(e.data));
@@ -726,12 +740,149 @@ export class SdkBackend implements LoreBackend {
     });
   }
 
-  // Phase 4
-  lockAcquire = notYet("lock acquire", 4);
-  lockRelease = notYet("lock release", 4);
-  lockQuery = notYet("lock query", 4);
-  getView = notYet("view", 4);
-  applyView = notYet("view apply", 4);
+  // ---- locks (Phase 4; advisory in Lore) ----
+
+  lockAcquire(paths: string[]): Promise<LockResult> {
+    return this.serial(async () => {
+      const { LoreEventTag } = this.enums;
+      const acquired: string[] = [];
+      let ignored = false;
+      await this.run(this.sdk.lore.lockFileAcquire(this.globals(), { paths, branch: this.requireRepo().branch }), (e) => {
+        if (e.tag === LoreEventTag.LOCK_FILE_ACQUIRE_BEGIN) ignored = !!e.data.ignored;
+        else if (e.tag === LoreEventTag.LOCK_FILE_ACQUIRE) acquired.push(String(e.data.path));
+      });
+      // Lore flags the whole request `ignored` when the files were already locked.
+      return ignored ? { acquired: [], alreadyLocked: acquired.length ? acquired : paths } : { acquired, alreadyLocked: paths.filter((p) => !acquired.includes(p)) };
+    });
+  }
+
+  lockRelease(paths: string[], o: { owner?: string } = {}): Promise<ReleaseResult> {
+    return this.serial(async () => {
+      const { LoreEventTag } = this.enums;
+      const released: string[] = [];
+      let notFound = false;
+      await this.run(this.sdk.lore.lockFileRelease(this.globals(), { paths, branch: this.requireRepo().branch, ...(o.owner ? { owner: o.owner } : {}) }), (e) => {
+        if (e.tag === LoreEventTag.LOCK_FILE_RELEASE_BEGIN) notFound = !!e.data.notFound;
+        else if (e.tag === LoreEventTag.LOCK_FILE_RELEASE) released.push(String(e.data.path));
+      });
+      return { released, notFound };
+    });
+  }
+
+  lockStatus(paths: string[]): Promise<Lock[]> {
+    return this.serial(async () => {
+      const { LoreEventTag } = this.enums;
+      const branch = this.requireRepo().branch;
+      const out: Lock[] = [];
+      await this.run(this.sdk.lore.lockFileStatus(this.globals(), { paths, branch }), (e) => {
+        if (e.tag === LoreEventTag.LOCK_FILE_STATUS) out.push({ path: String(e.data.path), owner: String(e.data.owner), branch, acquiredAt: Number(e.data.lockedAt) });
+      });
+      return out;
+    });
+  }
+
+  lockQuery(q: { branch?: string; owner?: string; path?: string }): Promise<Lock[]> {
+    return this.serial(() => this.lockQueryRaw(q));
+  }
+
+  private async lockQueryRaw(q: { branch?: string; owner?: string; path?: string }): Promise<Lock[]> {
+    const { LoreEventTag } = this.enums;
+    await this.ensureBranchNames();
+    const out: Lock[] = [];
+    await this.run(this.sdk.lore.lockFileQuery(this.globals(), { ...(q.branch ? { branch: q.branch } : {}), ...(q.owner ? { owner: q.owner } : {}), ...(q.path ? { path: q.path } : {}) }), (e) => {
+      if (e.tag !== LoreEventTag.LOCK_FILE_QUERY) return;
+      const id = e.data.branch.toString();
+      out.push({ path: String(e.data.path), owner: String(e.data.owner), branch: this.branchNames.get(id) ?? id, acquiredAt: Number(e.data.lockedAt) });
+    });
+    return out;
+  }
+
+  // ---- dependencies (Phase 4) ----
+
+  dependencies(path: string, o: { reverse?: boolean; recursive?: boolean }): Promise<DependencyEntry[]> {
+    return this.serial(async () => {
+      const { LoreEventTag } = this.enums;
+      const out: DependencyEntry[] = [];
+      await this.run(this.sdk.lore.fileDependencyList(this.globals(), { paths: [path], reverse: !!o.reverse, recursive: !!o.recursive }), (e) => {
+        if (e.tag === LoreEventTag.FILE_DEPENDENCY_LIST_ENTRY) out.push({ path: String(e.data.path), tags: e.data.tags.map(String), depth: Number(e.data.depth) });
+      });
+      return out;
+    });
+  }
+
+  /** Flat parallel arrays: depCounts per source, tagCounts per dependency. */
+  dependencyAdd(path: string, dependencies: string[], tags: string[] = []): Promise<void> {
+    return this.serial(() =>
+      this.run(
+        this.sdk.lore.fileDependencyAdd(this.globals(), {
+          paths: [path],
+          dependencies,
+          depCounts: [dependencies.length],
+          tags: dependencies.flatMap(() => tags),
+          tagCounts: dependencies.map(() => tags.length),
+        }),
+      ),
+    );
+  }
+
+  dependencyRemove(path: string, dependencies: string[]): Promise<void> {
+    return this.serial(() => this.run(this.sdk.lore.fileDependencyRemove(this.globals(), { paths: [path], dependencies, depCounts: [dependencies.length], tags: [], tagCounts: dependencies.map(() => 0) })));
+  }
+
+  // ---- views (Phase 4) ----
+
+  /** The instance's view filter (`.lore/view`): gitignore-style, lines exclude, `!` re-includes. */
+  getView(): Promise<string[]> {
+    return this.serial(async () => {
+      const text = await readFile(join(this.requireRepo().path, ".lore", "view"), "utf8").catch(() => "");
+      return text.split(/\r?\n/).filter((l, i, a) => l !== "" || i < a.length - 1);
+    });
+  }
+
+  private async withViewFile<T>(rules: string[], fn: (file: string) => Promise<T>): Promise<T> {
+    const dir = await mkdtemp(join(tmpdir(), "lore-desktop-view-"));
+    const file = join(dir, "view");
+    // An empty view file means "no view" to some readers; a comment keeps it explicit.
+    await writeFile(file, rules.length ? `${rules.join("\n")}\n` : "# full tree\n");
+    try {
+      return await fn(file);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  previewView(rules: string[]): Promise<ViewPreview> {
+    return this.serial(() =>
+      this.withViewFile(rules, async (file) => {
+        const { LoreEventTag } = this.enums;
+        const out: ViewPreview = { materialize: [], remove: [] };
+        await this.run(this.sdk.lore.revisionSync({ ...this.globals(), dryRun: true }, { view: file }), (e) => {
+          if (e.tag !== LoreEventTag.REVISION_SYNC_FILE || !e.data.flagFile) return;
+          const item = { path: String(e.data.path), size: Number(e.data.size) };
+          if (mapAction(e.data.action, true) === "delete") out.remove.push(item);
+          else out.materialize.push(item);
+        });
+        return out;
+      }),
+    );
+  }
+
+  applyView(rules: string[], ctx: OpContext): Promise<void> {
+    return this.serial(() =>
+      this.withViewFile(rules, async (file) => {
+        const { LoreEventTag } = this.enums;
+        const repo = this.requireRepo();
+        await this.run(
+          this.sdk.lore.revisionSync(this.globals(), { view: file }),
+          (e) => {
+            if (e.tag === LoreEventTag.REVISION_SYNC_PROGRESS) ctx.progress(mapSyncProgress(e.data));
+          },
+          ctx.signal,
+        );
+        await this.refreshRepo(repo.path);
+      }),
+    );
+  }
 
   async dispose(): Promise<void> {
     await this.queue.catch(() => undefined);

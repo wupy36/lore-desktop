@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { useView } from "../../api/queries";
+import { ContextMenu } from "../ContextMenu";
 import { useFiles } from "../../api/queries";
 import { buildDirTree, type DirNode } from "../../selectors";
 import { useUi } from "../../store/ui";
@@ -19,6 +21,9 @@ export function WorkspaceTab() {
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set(["Content", "Source"]));
   const tree = useMemo(() => buildDirTree(files ?? []), [files]);
   const rows = useMemo(() => flatten(tree, open, 0, []), [tree, open]);
+  const view = useView(true).data;
+  const ruleCount = (view?.stored ?? []).length;
+  const [menu, setMenu] = useState<{ x: number; y: number; path: string } | null>(null);
 
   const toggle = (p: string) =>
     setOpen((s) => {
@@ -30,6 +35,23 @@ export function WorkspaceTab() {
 
   return (
     <div className="pane-body" role="tree" aria-label="Workspace">
+      <div className="group-title">
+        <span className="grow">{ruleCount ? `View: ${ruleCount} rule(s) — sparse workspace` : "View: full repository"}</span>
+        <button className="mini" onClick={() => useUi.getState().openViewEditor()} title="Edit which folders are on disk (lore sync --view)">
+          Edit view…
+        </button>
+      </div>
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          onClose={() => setMenu(null)}
+          items={[
+            { label: `Include ${menu.path}/ in view…`, onSelect: () => useUi.getState().openViewEditor(`!${menu.path}/**`) },
+            { label: `Exclude ${menu.path}/ from view…`, onSelect: () => useUi.getState().openViewEditor(`${menu.path}/**`) },
+          ]}
+        />
+      )}
       <div className={`list-row${dir === "" && !group ? " active" : ""}`} role="treeitem" onClick={() => setDir("")}>
         <span className="tree-toggle">▾</span>
         <span className="grow">/ (root)</span>
@@ -45,6 +67,10 @@ export function WorkspaceTab() {
           style={{ paddingLeft: 8 + (depth + 1) * 14 }}
           onClick={() => setDir(node.path)}
           onDoubleClick={() => toggle(node.path)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setMenu({ x: e.clientX, y: e.clientY, path: node.path });
+          }}
           onKeyDown={(e) => {
             if (e.key === "ArrowRight" || e.key === "ArrowLeft") toggle(node.path);
             if (e.key === "Enter") setDir(node.path);

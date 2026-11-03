@@ -267,3 +267,7 @@ textarea.input { height: auto; padding: 4px 6px; resize: vertical; font-family: 
 .seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 .seg-btn { height: 18px; padding: 0 6px; border: none; background: transparent; color: var(--text-dim); font-size: 11px; cursor: pointer; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .seg-btn.on { background: var(--accent-bg); color: var(--text); }
+
+.view-preview { max-height: 30vh; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); margin-top: 4px; }
+.view-preview .list-row.state-added .grow { color: var(--st-added); }
+.view-preview .list-row.state-deleted .grow { color: var(--st-deleted); }

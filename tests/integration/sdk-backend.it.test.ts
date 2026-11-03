@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 import { join, normalize } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { SdkBackend } from "../../src/main/lore/SdkBackend";
+import { viewMatcher } from "../../src/main/lore/mock/fixtures";
+import { UNKNOWN_OWNER } from "@shared/types";
 import type { OpContext, Progress } from "../../src/main/lore/LoreBackend";
 
 const REMOTE = process.env.LORE_IT_REMOTE;
@@ -228,6 +230,79 @@ describe.skipIf(!REMOTE)("SdkBackend (real Lore)", () => {
     expect(b.currentRepository()).toMatchObject({ behindBy: 1, aheadBy: 0, mergePending: false });
     await b.sync({}, ctx());
     expect(b.currentRepository()).toMatchObject({ behindBy: 0 });
+  });
+
+  it("locks: acquire, already-locked, status, query, Lock owner column, release", async () => {
+    await b.openRepository(seedPath);
+    expect(await b.lockAcquire(["Hero.uasset"])).toEqual({ acquired: ["Hero.uasset"], alreadyLocked: [] });
+    expect(await b.lockAcquire(["Hero.uasset"])).toEqual({ acquired: [], alreadyLocked: ["Hero.uasset"] });
+    const st = await b.lockStatus(["Hero.uasset", "Source/main.cpp"]);
+    expect(st).toEqual([expect.objectContaining({ path: "Hero.uasset", branch: "main" })]);
+    // Unauthenticated demo server: ownership is not tracked.
+    expect(st[0]!.owner).toBe(UNKNOWN_OWNER);
+    expect(await b.lockQuery({})).toEqual([expect.objectContaining({ path: "Hero.uasset", branch: "main" })]);
+    expect((await b.listFiles()).find((f) => f.path === "Hero.uasset")?.lockOwner).toBe(UNKNOWN_OWNER);
+    expect(await b.lockRelease(["Hero.uasset"])).toEqual({ released: ["Hero.uasset"], notFound: false });
+    expect(await b.lockRelease(["Hero.uasset"])).toEqual({ released: [], notFound: true });
+    expect((await b.listFiles()).find((f) => f.path === "Hero.uasset")?.lockOwner).toBeNull();
+  });
+
+  it("dependencies: staged until a commit with a real change, then visible to other instances", async () => {
+    await b.dependencyAdd("Source/main.cpp", ["Hero.uasset", "Source/new.h"], ["asset"]);
+    expect(await b.dependencies("Source/main.cpp", {})).toEqual([
+      { path: "Hero.uasset", tags: ["asset"], depth: 0 },
+      { path: "Source/new.h", tags: ["asset"], depth: 0 },
+    ]);
+    expect((await b.dependencies("Hero.uasset", { reverse: true })).map((d) => d.path)).toEqual(["Source/main.cpp"]);
+    await expect(b.commit("deps only")).rejects.toThrow(); // "Nothing staged for commit"
+    appendFileSync(join(seedPath, "Source", "new.h"), "// with deps\n");
+    await b.stage(["Source/new.h"]);
+    await b.commit("Header + dependencies");
+    await b.push(undefined, ctx());
+    await b.openRepository(join(root, "work"));
+    await b.sync({}, ctx());
+    expect((await b.dependencies("Source/main.cpp", {})).map((d) => d.path)).toEqual(["Hero.uasset", "Source/new.h"]);
+    await b.dependencyRemove("Source/main.cpp", ["Source/new.h"]);
+    expect((await b.dependencies("Source/main.cpp", {})).map((d) => d.path)).toEqual(["Hero.uasset"]);
+  });
+
+  it("view: dry-run preview agrees with the mock matcher on every calibration variant", async () => {
+    const tracked = (await b.listFiles()).filter((f) => f.action !== "add").map((f) => f.path);
+    for (const rules of [["*", "!Source/"], ["*", "!Source/**"], ["*", "!Source/main.cpp"], ["Source/"], ["*.uasset"], ["*", "!*.uasset"], ["Source/**", "!Source/new.h"]]) {
+      const m = viewMatcher(rules);
+      const preview = await b.previewView(rules);
+      expect(preview.remove.map((f) => f.path).sort(), JSON.stringify(rules)).toEqual(tracked.filter((p) => !m(p)).sort());
+    }
+  });
+
+  it("view: apply removes files and writes .lore/view; full view restores", async () => {
+    const work = join(root, "work");
+    const rules = ["# code only", "*", "!Source/**"];
+    const preview = await b.previewView(rules);
+    expect(preview.remove.map((f) => f.path)).toEqual(["Hero.uasset"]);
+    expect(preview.materialize).toEqual([]);
+    expect(existsSync(join(work, "Hero.uasset"))).toBe(true); // dry run touched nothing
+
+    await b.applyView(rules, ctx());
+    expect(existsSync(join(work, "Hero.uasset"))).toBe(false);
+    expect(existsSync(join(work, "Source", "main.cpp"))).toBe(true);
+    // Lore stores the view normalized: comments dropped, patterns lowercased.
+    expect(await b.getView()).toEqual(["*", "!source/**"]);
+    expect((await b.previewView([])).materialize.map((f) => f.path)).toEqual(["Hero.uasset"]);
+
+    await b.applyView([], ctx());
+    expect(existsSync(join(work, "Hero.uasset"))).toBe(true);
+  });
+
+  it("dependency-based sync (--root-file) runs against the dependency graph", async () => {
+    await b.openRepository(seedPath);
+    appendFileSync(join(seedPath, "Source", "main.cpp"), "// root edit\n");
+    await b.stage(["Source/main.cpp"]);
+    await b.commit("root edit");
+    await b.push(undefined, ctx());
+    await b.openRepository(join(root, "work"));
+    await b.sync({ rootFiles: ["Source/main.cpp"], dependencyRecursive: true }, ctx());
+    expect(readFileSync(join(root, "work", "Source", "main.cpp"), "utf8")).toContain("// root edit");
   });
 
   it("reports Lore errors as LoreError with the message", async () => {

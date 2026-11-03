@@ -4,6 +4,7 @@ import { AboutDialog } from "./components/AboutDialog";
 import { CreateRepoForm } from "./components/CreateRepoForm";
 import { Modal } from "./components/Modal";
 import { PreferencesDialog } from "./components/PreferencesDialog";
+import { ViewEditor } from "./components/ViewEditor";
 import { BottomPanel } from "./components/BottomPanel/BottomPanel";
 import { DetailPane } from "./components/DetailPane";
 import { FileTable } from "./components/FileTable";
@@ -48,6 +49,7 @@ function Modals() {
   if (modal === "about") return <AboutDialog onClose={close} />;
   if (modal === "account") return <AccountDialog onClose={close} />;
   if (modal === "palette") return <CommandPalette onClose={close} />;
+  if (modal === "view") return <ViewEditor onClose={close} />;
   if (modal === "createRepository")
     return (
       <Modal title="New repository" onClose={close}>

@@ -15,7 +15,7 @@ afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force
 
 describe("SettingsStore", () => {
   it("defaults when missing or corrupt", () => {
-    expect(new SettingsStore(tmp()).get()).toEqual({ lastRepo: null, recentRepos: [], prefs: defaultPrefs() });
+    expect(new SettingsStore(tmp()).get()).toEqual({ lastRepo: null, recentRepos: [], prefs: defaultPrefs(), viewDrafts: {} });
     const d = tmp();
     writeFileSync(join(d, "settings.json"), "{not json");
     expect(new SettingsStore(d).get().recentRepos).toEqual([]);

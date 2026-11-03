@@ -3,10 +3,10 @@ import { create } from "zustand";
 import type { ChangeGroup } from "@shared/types";
 
 export type SidebarTab = "repository" | "workspace" | "changes" | "history";
-export type BottomTab = "console" | "transfers";
+export type BottomTab = "console" | "transfers" | "locks";
 export type ViewMode = "all" | "changed";
-export type DetailTab = "history" | "diff";
-export type Modal = "preferences" | "about" | "createRepository" | "account" | "palette" | null;
+export type DetailTab = "history" | "diff" | "deps";
+export type Modal = "preferences" | "about" | "createRepository" | "account" | "palette" | "view" | null;
 /** What the Diff tab compares. Absent source = current revision; absent target = working tree. */
 export interface DiffSpec {
   path: string;
@@ -35,6 +35,9 @@ export interface UiState {
   authPrompt: { url: string; code: string } | null;
   /** Revision selected in the History tab (hash). */
   historyRevision: string | null;
+  /** Rule appended when the view editor opens (from "Include/Exclude in view" actions). */
+  viewDraftAppend: string | null;
+  openViewEditor(append?: string): void;
   layout: { sidebarW: number; detailW: number; bottomH: number };
 
   setSidebarTab(t: SidebarTab): void;
@@ -77,6 +80,8 @@ export const useUi = create<UiState>()((set, get) => ({
   diffSpec: null,
   authPrompt: null,
   historyRevision: null,
+  viewDraftAppend: null,
+  openViewEditor: (append) => set({ modal: "view", viewDraftAppend: append ?? null }),
   layout: { sidebarW: 300, detailW: 380, bottomH: 200 },
 
   setSidebarTab: (sidebarTab) => set({ sidebarTab }),

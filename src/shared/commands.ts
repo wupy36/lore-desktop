@@ -20,11 +20,13 @@ export const cli = {
   dirty: (paths: string[]): Argv => ["dirty", ...paths],
   commit: (message: string): Argv => ["commit", message],
   push: (branch?: string): Argv => ["push", ...(branch ? [branch] : [])],
-  sync: (o: { revision?: string; reset?: boolean; viewFile?: string; rootFiles?: string[] }): Argv => [
+  sync: (o: { revision?: string; reset?: boolean; viewFile?: string; rootFiles?: string[]; dependencyRecursive?: boolean; dependencyTags?: string[] }): Argv => [
     "sync",
     ...(o.reset ? ["--reset"] : []),
     ...(o.viewFile ? ["--view", o.viewFile] : []),
     ...(o.rootFiles ?? []).flatMap((f) => ["--root-file", f]),
+    ...(o.dependencyRecursive ? ["--dependency-recursive"] : []),
+    ...(o.dependencyTags ?? []).flatMap((t) => ["--dependency-tag", t]),
     ...(o.revision ? [o.revision] : []),
   ],
   history: (length: number, branch?: string): Argv => ["history", ...(branch ? ["--branch", branch] : []), String(length)],
@@ -40,7 +42,11 @@ export const cli = {
   branchSwitch: (name: string, reset?: boolean): Argv => ["branch", "switch", ...(reset ? ["--reset"] : []), name],
   branchCreate: (name: string): Argv => ["branch", "create", name],
   lockAcquire: (paths: string[]): Argv => ["lock", "acquire", ...paths],
-  lockRelease: (paths: string[]): Argv => ["lock", "release", ...paths],
+  lockRelease: (paths: string[], owner?: string): Argv => ["lock", "release", ...(owner ? ["--owner", owner] : []), ...paths],
+  lockStatus: (paths: string[]): Argv => ["lock", "status", ...paths],
+  depList: (path: string, o: { reverse?: boolean; recursive?: boolean } = {}): Argv => ["file", "dependency", "list", ...(o.reverse ? ["--reverse"] : []), ...(o.recursive ? ["--recursive"] : []), path],
+  depAdd: (path: string, deps: string[], tags: string[] = []): Argv => ["file", "dependency", "add", ...tags.flatMap((t) => ["--tag", t]), path, ...deps],
+  depRemove: (path: string, deps: string[]): Argv => ["file", "dependency", "remove", path, ...deps],
   lockQuery: (o: { branch?: string; owner?: string; path?: string }): Argv => [
     "lock",
     "query",

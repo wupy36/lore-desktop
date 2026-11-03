@@ -4,6 +4,7 @@ import { useActions } from "../actions";
 import { useDiff, useFileHistory, useFiles } from "../api/queries";
 import { formatSize, formatTime } from "../selectors";
 import { useUi } from "../store/ui";
+import { DepsTab } from "./DepsTab";
 import { DiffView } from "./DiffView";
 
 export function DetailPane() {
@@ -39,7 +40,9 @@ export function DetailPane() {
         <dt>Size</dt>
         <dd>{formatSize(file.size)}</dd>
         <dt>Lock</dt>
-        <dd className="lock">{file.lockOwner ?? "—"} {file.lockOwner && <span className="hint">(advisory)</span>}</dd>
+        <dd className="lock">
+          {file.lockOwner === "<unknown>" ? "locked (owner unknown)" : (file.lockOwner ?? "—")} {file.lockOwner && <span className="hint">(advisory)</span>}
+        </dd>
         {file.fromPath && (
           <>
             <dt>From</dt>
@@ -54,8 +57,12 @@ export function DetailPane() {
         <button className="tab" role="tab" aria-selected={tab === "diff"} onClick={() => setTab("diff")}>
           Diff
         </button>
+        <button className="tab" role="tab" aria-selected={tab === "deps"} onClick={() => setTab("deps")}>
+          Deps
+        </button>
       </div>
-      <div className="pane-body">
+      {tab === "deps" && <DepsTab path={file.path} />}
+      <div className="pane-body" hidden={tab === "deps"}>
         {tab === "history" &&
           (isNew ? (
             <div className="empty">New file — no history yet.</div>

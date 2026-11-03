@@ -51,8 +51,8 @@ Published docs site: <https://epicgames.github.io/lore/>.
 | Revert | `reset <paths>` (`--purge` deletes untracked) · `fileReset` | Reset (confirm dialog) | Untracked files are only deleted with `--purge` |
 | Revert Unchanged | `status --check-dirty` | "Revert unchanged" toolbar button | ✓ |
 | Checkout / mark for add / delete | **None.** Detection via `dirty` / `--scan`; delete = remove file, then stage | No checkout UI. F5 runs `status --scan` | P4V-style "open for edit" **does not exist** by design |
-| Exclusive lock | `lock acquire/release/status/query` · `lockFileAcquire/Release/Status/Query` | Lock / Release, Lock owner column | **Advisory** — never labelled "enforced" |
-| Sparse / hydrate | View filter (`--view`), `clone --prefetch <file>`, `--root-file` + `--dependency-*` on clone/sync | Phase 4: view editor, "include in view", dependency sync | `--prefetch` exists **only on clone**; no standalone prefetch command — "Prefetch" on an existing instance = add to view + `sync --view` |
+| Exclusive lock | `lock acquire/release/status/query` · `lockFileAcquire/Release/Status/Query` | Lock / Release, Lock owner column, Locks tab, health hint | **Advisory**. On an unauthenticated server owners are `<unknown>` and anyone can release (verified) |
+| Sparse / hydrate | View filter (`--view`), `clone --prefetch <file>`, `--root-file` + `--dependency-*` on clone/sync | View editor with dry-run preview, include/exclude in view, Deps tab, *Sync this file + dependencies* | `--prefetch` exists **only on clone**, so "Prefetch" on an existing instance = add a `!path` rule + `sync --view`. View lines *exclude*; `!` includes (gitignore-like, see Phase 4) |
 | File history / revision graph | `file history`, `revision history/info`, `file audit` · `fileHistory`, `revisionHistory`, `revisionInfo`, `fileAudit` | Detail pane history list | Graph view not in scope |
 | Diff | `file diff`, `revision diff`, `branch diff` · `fileDiff`, `revisionDiff`, `branchDiff` | Inline unified diff (text); metadata + external tool (binary) | Binary detection is a GUI heuristic (extension) — Lore has no "is binary" flag in status |
 
@@ -171,6 +171,34 @@ Not verified on Windows: running the NSIS installer interactively (install, shor
 Observations: Electron 33 warns `--use-openssl-ca is not supported` when that `NODE_OPTIONS` flag is set in the environment (harmless). pnpm 10 needs `koffi` in `onlyBuiltDependencies`.
 
 ## 7. Phase status
+
+### Phase 4 (locks, workspace view, dependencies) — done
+
+Every behaviour below was probed against loreserver 0.12 before building the UI. The integration tests pin it.
+
+**Locks** (advisory: the glossary says push and merge never consult them)
+- `lockFileAcquire/Release/Status/Query` on the current branch. Acquiring a file that is already locked is not an error: Lore flags the request `ignored: true`, so the app reports *already locked*. Release reports `notFound` when there was nothing to release.
+- **On a server without authentication, lock ownership is not tracked:** every lock's owner is `<unknown>`, a second identity's acquire returns `ignored`, and **anyone can release anyone's lock**. The Locks panel and the detail pane say so ("owner unknown"). The release-someone-else's flow (`--owner`) asks first. Real per-user ownership needs an authenticating server, which is **untested**.
+- UI: **Locks** tab in the bottom panel (all locks, *mine* filter, release, release-as-owner). The Lock owner column is filled from one `lock query` per file listing. Lock / Release come from the context menu, the toolbar and the palette. The health card warns about staged binaries that aren't locked (binaries can't be merged) and about changed files locked by someone else.
+
+**Workspace view** (`.lore/view`, per instance, never committed)
+- Syntax, from `lore-revision/src/filter.rs` and calibrated with dry-run syncs: every line **excludes**, `!` re-includes, `#` comments. **The last rule matching the file itself decides.** A pattern without `/` matches the name at any depth; one with `/` matches from the root. A file no rule matches inherits its nearest matched ancestor directory's verdict. Consequences: `*` + `!Source/` keeps **nothing** in `Source/` (each file matches `*`). Include a folder with `!Source/**`, and exclude a sub-folder of an included one with `Sub/**`. Matching is case-insensitive.
+- **Lore rewrites `.lore/view` when applying it:** comments are dropped and patterns lowercased. The app keeps the rules as you wrote them (per repository, in `settings.json`) and shows them while they still normalize to what Lore stored; otherwise it shows Lore's version.
+- **Preview** = `revisionSync({ dryRun: true }, { view })` → `REVISION_SYNC_FILE` events (removals; size is reported as 0 for them, so sizes come from the tree listing). **Apply** = `sync --view <tempfile>`. Untracked local files are never touched by a view change.
+- UI: **Workspace view** editor (Workspace tab *Edit view…*, Repository menu, palette) with *Everything* / *Start sparse* templates, Preview (+fetch / −remove lists with sizes) and Apply (confirms removals). *Include/Exclude in view* on folder-tree and file context menus append `!Folder/**` / `Folder/**` (or the file path) and open the editor rather than applying silently.
+- The mock backend uses `viewMatcher()` (same semantics). The integration test asserts it agrees with Lore's dry run on 7 rule sets, and a unit test pins 15 calibration cases.
+
+**Dependencies**
+- `fileDependencyAdd` takes flat parallel arrays: `depCounts` per source and **`tagCounts` per dependency**. A mismatch fails with "tag_counts length must match dependencies length".
+- **Dependencies are part of the staged state.** They don't show in `status`, a commit with *only* dependency changes fails ("Nothing staged for commit"), and they reach other instances with the next commit that has a staged file. A pending (uncommitted) dependency change disappeared in one probe around a `sync --view`; which operation dropped it was not pinned down, so the Deps tab says changes are staged until the next commit.
+- UI: **Deps** tab in the detail pane: *Depends on* (direct or recursive, with tags, remove), *Used by* (reverse), an add form with path completion and tags, and **Sync this file + dependencies** (`sync --root-file <path> --dependency-recursive`, also in the file context menu and the palette).
+
+**Verified**
+- `pnpm test`: **122**. `pnpm test:it` against real Lore: **23**, including locks (acquire / already-locked / status / query / column / release / notFound), dependencies (staged → commit with a change → visible in the other instance → remove), view preview parity on 7 rule sets, apply → file leaves the disk → `.lore/view` normalized → full view restores, and dependency-based sync.
+- `scripts/smoke-phase4.cjs` through the real UI on a fresh repository: lock from the context menu → 🔒 column + Locks tab → release; add a dependency; view preview → apply (file removed from disk) → *Everything* → restored. Added to Windows CI.
+- **With this phase `SdkBackend` has no unimplemented operations left.** `sdkCoverage.ts` marks the locks and dependency ops as used.
+
+**Not done / untested:** lock ownership with an authenticating server; locking a file that is outside the current view; "lock request" messaging (LoreGUI's needs a relay); dependency tag filters in sync (`--dependency-tag`, the backend supports it but no UI yet); depth limits.
 
 ### Step C (revision graph timeline) — done
 

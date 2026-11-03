@@ -88,14 +88,19 @@ describe("Command palette", () => {
 describe("Health card + branches + account", () => {
   it("shows unpushed revisions with a Push action after a commit", async () => {
     const { backend } = await renderApp();
+    // Before committing, the demo's staged binaries without locks get a "lock them" hint.
+    const before = await screen.findByRole("status", { name: "Working copy status" });
+    await waitFor(() => expect(within(before).getByText(/staged binary file\(s\) are not locked/)).toBeTruthy());
     await backend.stage(["Source/Game/Player/HeroMovement.cpp"]);
     await backend.commit("x");
     useUi.getState().setSidebarTab("repository");
     useUi.getState().setSidebarTab("changes");
     fireEvent.keyDown(window, { key: "F5" });
     const card = await screen.findByRole("status", { name: "Working copy status" });
-    expect(within(card).getByText(/local revision\(s\) not pushed/)).toBeTruthy();
+    await waitFor(() => expect(within(card).getByText(/local revision\(s\) not pushed/)).toBeTruthy());
     expect(within(card).getByRole("button", { name: "Push" })).toBeTruthy();
+    // The commit took the staged binaries with it, so the lock hint is gone.
+    expect(within(card).queryByText(/staged binary file\(s\) are not locked/)).toBeNull();
   });
 
   it("Create & switch moves to the new branch", async () => {

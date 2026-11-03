@@ -97,8 +97,26 @@ export const DiffResult = z.object({
 });
 export type DiffResult = z.infer<typeof DiffResult>;
 
+/** Locks are advisory in Lore. On a server without authentication every lock's owner is
+ * reported as "<unknown>" and anyone can release it (verified against loreserver 0.12). */
+export const UNKNOWN_OWNER = "<unknown>";
 export const Lock = z.object({ path: z.string(), owner: z.string(), branch: z.string(), acquiredAt: z.number() });
 export type Lock = z.infer<typeof Lock>;
+export const LockResult = z.object({ acquired: z.array(z.string()), alreadyLocked: z.array(z.string()) });
+export type LockResult = z.infer<typeof LockResult>;
+export const ReleaseResult = z.object({ released: z.array(z.string()), notFound: z.boolean() });
+export type ReleaseResult = z.infer<typeof ReleaseResult>;
+
+/** One dependency edge as seen from the queried file (depth 0 = direct). */
+export const DependencyEntry = z.object({ path: z.string(), tags: z.array(z.string()), depth: z.number().int() });
+export type DependencyEntry = z.infer<typeof DependencyEntry>;
+
+/** What applying a view would do to the working tree (dry-run sync). */
+export const ViewPreview = z.object({
+  materialize: z.array(z.object({ path: z.string(), size: z.number() })),
+  remove: z.array(z.object({ path: z.string(), size: z.number() })),
+});
+export type ViewPreview = z.infer<typeof ViewPreview>;
 
 export const AuthInfo = z.object({
   remote: z.string().nullable(),

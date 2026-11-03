@@ -12,7 +12,11 @@ import {
   FileRevision,
   GraphRevision,
   Instance,
+  DependencyEntry,
   Lock,
+  LockResult,
+  ReleaseResult,
+  ViewPreview,
   LogEntry,
   MaintenanceOp,
   Prefs,
@@ -52,7 +56,18 @@ export const contract = {
 
   "rev:commit": { input: z.object({ message: z.string().min(1) }), output: Revision },
   "rev:push": { input: z.object({ branch: z.string().optional() }), output: OpHandle },
-  "rev:sync": { input: z.object({ revision: z.string().optional(), reset: z.boolean().optional(), viewFile: z.string().optional(), rootFiles: z.array(z.string()).optional() }), output: OpHandle },
+  "rev:sync": {
+    input: z.object({
+      revision: z.string().optional(),
+      reset: z.boolean().optional(),
+      viewFile: z.string().optional(),
+      /** Dependency-based selective sync: only these files and their dependencies. */
+      rootFiles: z.array(z.string()).optional(),
+      dependencyRecursive: z.boolean().optional(),
+      dependencyTags: z.array(z.string()).optional(),
+    }),
+    output: OpHandle,
+  },
   /** History across the current or all branches, deduplicated, newest first (for the graph view). */
   "rev:graph": { input: z.object({ scope: z.enum(["current", "all"]), length: z.number().int().positive().max(5000) }), output: z.array(GraphRevision) },
   "rev:info": { input: z.object({ revision: z.string() }), output: RevisionDetail },
@@ -67,8 +82,10 @@ export const contract = {
   "branch:create": { input: z.object({ name: z.string().regex(/^[\w./-]+$/, "letters, digits, . _ - / only") }), output: Branch },
   "branch:action": { input: z.object({ name: z.string().min(1), action: BranchAction }), output: z.object({ ok: z.literal(true) }) },
 
-  "lock:acquire": { input: Paths, output: z.array(Lock) },
-  "lock:release": { input: Paths, output: Ok },
+  "lock:acquire": { input: Paths, output: LockResult },
+  /** `owner` releases a lock held by someone else (owner action; advisory). */
+  "lock:release": { input: Paths.extend({ owner: z.string().optional() }), output: ReleaseResult },
+  "lock:status": { input: Paths, output: z.array(Lock) },
   "lock:query": { input: z.object({ branch: z.string().optional(), owner: z.string().optional(), path: z.string().optional() }), output: z.array(Lock) },
 
   "auth:info": { input: z.void(), output: AuthInfo },
@@ -76,8 +93,16 @@ export const contract = {
   "auth:login": { input: z.void(), output: AuthInfo },
   "auth:logout": { input: z.void(), output: AuthInfo },
 
-  "view:get": { input: z.void(), output: z.object({ rules: z.array(z.string()) }) },
+  /** `rules`: what to show (the authored text when it still matches Lore's stored view). `stored`: Lore's normalized .lore/view. */
+  "view:get": { input: z.void(), output: z.object({ rules: z.array(z.string()), stored: z.array(z.string()) }) },
+  /** Dry-run `sync --view`: which files would be materialized / removed. */
+  "view:preview": { input: z.object({ rules: z.array(z.string()) }), output: ViewPreview },
   "view:apply": { input: z.object({ rules: z.array(z.string()) }), output: OpHandle },
+
+  "deps:list": { input: z.object({ path: z.string(), reverse: z.boolean().optional(), recursive: z.boolean().optional() }), output: z.array(DependencyEntry) },
+  /** Recorded in the staged state; goes to the server with the next commit that has staged files. */
+  "deps:add": { input: z.object({ path: z.string(), dependencies: z.array(z.string()).min(1), tags: z.array(z.string()).optional() }), output: Ok },
+  "deps:remove": { input: z.object({ path: z.string(), dependencies: z.array(z.string()).min(1) }), output: Ok },
 
   "prefs:get": { input: z.void(), output: Prefs },
   "prefs:set": { input: Prefs.partial(), output: Prefs },
@@ -106,7 +131,7 @@ export const events = {
   /** Interactive login: open `url` (and show `code`) to finish signing in. */
   "auth:prompt": z.object({ url: z.string(), code: z.string() }),
   /** Menu-bar commands that open renderer screens. */
-  "ui:command": z.object({ command: z.enum(["preferences", "about", "createRepository", "openRepository", "account", "palette"]) }),
+  "ui:command": z.object({ command: z.enum(["preferences", "about", "createRepository", "openRepository", "account", "palette", "view"]) }),
 } as const;
 export type EventName = keyof typeof events;
 export type EventPayload<E extends EventName> = z.output<(typeof events)[E]>;

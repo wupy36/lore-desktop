@@ -55,9 +55,9 @@ export const SDK_COVERAGE: Record<string, Coverage> = {
 
   // file
   fileAudit: planned("Phase 3", "Detail pane (per-line attribution)"),
-  fileDependencyAdd: planned("Phase 4", "Dependencies tab"),
-  fileDependencyList: planned("Phase 4", "Dependencies tab / dependency sync"),
-  fileDependencyRemove: planned("Phase 4", "Dependencies tab"),
+  fileDependencyAdd: used,
+  fileDependencyList: used,
+  fileDependencyRemove: used,
   fileDiff: used,
   fileDirty: used,
   fileDirtyCopy: excluded("Watcher reports plain dirty paths; Lore classifies the action from disk"),
@@ -91,10 +91,10 @@ export const SDK_COVERAGE: Record<string, Coverage> = {
   linkUpdate: NON_GOAL_LINKS,
 
   // lock
-  lockFileAcquire: planned("Phase 4", "Lock / file row menu"),
-  lockFileQuery: planned("Phase 4", "Locks panel"),
-  lockFileRelease: planned("Phase 4", "Lock / file row menu"),
-  lockFileStatus: planned("Phase 4", "Locks panel / Lock owner column"),
+  lockFileAcquire: used,
+  lockFileQuery: used,
+  lockFileRelease: used,
+  lockFileStatus: used,
 
   // notification
   notificationSubscribe: excluded("Streaming; live updates come from the FS watcher for now"),

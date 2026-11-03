@@ -57,7 +57,7 @@ interface MenuCtx {
 function buildMenu({ handlers, settings, bus }: MenuCtx): void {
   const fail = (title: string) => (e: unknown) => dialog.showErrorBox(title, e instanceof Error ? e.message : String(e));
   const open = (path: string) => handlers["repo:open"]({ path }).catch(fail("Open repository"));
-  const ui = (command: "preferences" | "about" | "createRepository" | "openRepository") => bus.emit("ui:command", { command });
+  const ui = (command: "preferences" | "about" | "createRepository" | "openRepository" | "view") => bus.emit("ui:command", { command });
   const maint = (op: "verify" | "gc" | "flush" | "prune") => () => void handlers["repo:maintenance"]({ op }).catch(fail("Repository"));
   const recent: MenuItemConstructorOptions[] = settings.get().recentRepos.map((p) => ({ label: p, click: () => void open(p) }));
   const template: MenuItemConstructorOptions[] = [
@@ -77,6 +77,8 @@ function buildMenu({ handlers, settings, bus }: MenuCtx): void {
     {
       label: "&Repository",
       submenu: [
+        { label: "Edit workspace &view…", click: () => ui("view") },
+        { type: "separator" },
         { label: "&Verify state", click: maint("verify") },
         { label: "&Garbage collect", click: maint("gc") },
         { label: "&Flush pending writes", click: maint("flush") },
@@ -155,6 +157,7 @@ async function main() {
   const handlers: Handlers = createHandlers({
     logHistory,
     prefs: { get: () => settings.get().prefs, set: (p) => settings.setPrefs(p) },
+    viewDrafts: { get: (p) => settings.get().viewDrafts[p], set: (p, r) => settings.setViewDraft(p, r) },
     about: createAbout(raw.kind),
     openExternalDiff: async ({ path, source, target }) => {
       const repo = backend.currentRepository();

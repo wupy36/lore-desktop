@@ -31,6 +31,10 @@ export function buildCommands(a: Actions, ctx: { hasRepo: boolean; branches: Bra
     { id: "push", title: "Push", group: "Revisions", keys: "Ctrl+Shift+P", cli: "lore push", enabled: r, run: () => void a.push() },
     { id: "sync", title: "Sync", group: "Revisions", keys: "Ctrl+Shift+S", cli: "lore sync", enabled: r, run: () => void a.sync() },
     { id: "history", title: "Show history", group: "Revisions", cli: "lore history", enabled: r, run: () => ui.setSidebarTab("history") },
+    { id: "view", title: "Edit workspace view…", group: "Workspace", cli: "lore sync --view", enabled: r, run: () => ui.openViewEditor() },
+    { id: "locks", title: "Show locks", group: "Locks", cli: "lore lock query", enabled: r, run: () => ui.setBottomTab("locks") },
+    { id: "deps", title: `Dependencies of ${sel[0]?.path.split("/").pop() ?? "selection"}`, group: "Workspace", cli: "lore file dependency list", enabled: r && sel.length === 1, run: () => sel[0] && ui.openDetail(sel[0].path, "deps") },
+    { id: "sync-deps", title: `Sync selection with dependencies (${sel.length})`, group: "Revisions", cli: "lore sync --root-file … --dependency-recursive", enabled: r && sel.length > 0, run: () => void a.syncWithDependencies(sel.map((f) => f.path)) },
     { id: "lock", title: `Lock selection (${sel.length})`, group: "Locks", cli: "lore lock acquire", enabled: r && sel.length > 0, run: () => void a.lock() },
     { id: "release", title: `Release locks on selection (${sel.length})`, group: "Locks", cli: "lore lock release", enabled: r && sel.some((f) => f.lockOwner), run: () => void a.release() },
     {

@@ -53,8 +53,23 @@ export function useActions() {
         if (prefs?.confirmReset !== false && !confirmFn(`Discard local changes to ${changed.length} file(s)? This cannot be undone.`)) return;
         return run("reset", () => api.invoke("ws:reset", { paths: paths(changed) }));
       },
-      lock: (fs: FileEntry[] = sel) => fs.length && run("lock", () => api.invoke("lock:acquire", { paths: paths(fs) })),
-      release: (fs: FileEntry[] = sel) => fs.length && run("release", () => api.invoke("lock:release", { paths: paths(fs) })),
+      lock: (fs: FileEntry[] = sel) =>
+        fs.length &&
+        run("lock", async () => {
+          const r = await api.invoke("lock:acquire", { paths: paths(fs) });
+          useActivity.getState().setError(r.alreadyLocked.length ? `lock: ${r.acquired.length} locked, ${r.alreadyLocked.length} already locked (${r.alreadyLocked.slice(0, 3).join(", ")})` : null);
+        }),
+      release: (fs: FileEntry[] = sel, owner?: string) =>
+        fs.length &&
+        run("release", async () => {
+          const r = await api.invoke("lock:release", { paths: paths(fs), ...(owner ? { owner } : {}) });
+          if (r.notFound) useActivity.getState().setError("release: no matching lock found");
+        }),
+      releasePaths: (ps: string[], owner?: string) => run("release", () => api.invoke("lock:release", { paths: ps, ...(owner ? { owner } : {}) })),
+      depAdd: (path: string, dependencies: string[], tags: string[]) => run("add dependency", () => api.invoke("deps:add", { path, dependencies, tags })),
+      depRemove: (path: string, dependencies: string[]) => run("remove dependency", () => api.invoke("deps:remove", { path, dependencies })),
+      syncWithDependencies: (rootFiles: string[]) => run("sync dependencies", () => api.invoke("rev:sync", { rootFiles, dependencyRecursive: true })),
+      applyView: (rules: string[]) => run("apply view", () => api.invoke("view:apply", { rules })),
       commit: (message: string) =>
         run("commit", async () => {
           await api.invoke("rev:commit", { message });

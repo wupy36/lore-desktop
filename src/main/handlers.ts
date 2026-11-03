@@ -18,6 +18,8 @@ export interface HandlerDeps {
   pickDirectory?: () => Promise<string | null>;
   /** Preference persistence; in-memory defaults when absent (tests, harnesses). */
   prefs?: { get(): Prefs; set(patch: Partial<Prefs>): Prefs };
+  /** Authored view rules per repository (Lore normalizes .lore/view). In-memory when absent. */
+  viewDrafts?: { get(repoPath: string): string[] | undefined; set(repoPath: string, rules: string[]): void };
   /** About screen data + bundled license texts (Electron-only). */
   about?: { info(): Promise<AboutInfo>; license(id: string): Promise<string | null> };
   /** FS watcher hooks: paused around ops that write the working tree, restarted on open. */
@@ -28,9 +30,11 @@ export interface HandlerDeps {
   recents?: { list(): string[]; remember(path: string): void };
 }
 
-export function createHandlers({ backend: b, runner, bus, info, openExternalDiff, pickDirectory, recents, logHistory, watcher, prefs: prefsDep, about }: HandlerDeps): Handlers {
+export function createHandlers({ backend: b, runner, bus, info, openExternalDiff, pickDirectory, recents, logHistory, watcher, prefs: prefsDep, about, viewDrafts: draftsDep }: HandlerDeps): Handlers {
   const changed = (reason: string) => bus.emit("ws:changed", { reason });
   let memPrefs = defaultPrefs();
+  const memDrafts = new Map<string, string[]>();
+  const drafts = draftsDep ?? { get: (p: string) => memDrafts.get(p), set: (p: string, r: string[]) => void memDrafts.set(p, r) };
   const prefs = prefsDep ?? { get: () => memPrefs, set: (p: Partial<Prefs>) => (memPrefs = Prefs.parse({ ...memPrefs, ...p })) };
   /** Ops that write the working tree run with the watcher paused (their writes are not user edits). */
   const writesTree =
@@ -95,7 +99,7 @@ export function createHandlers({ backend: b, runner, bus, info, openExternalDiff
       return r;
     },
     "rev:push": async ({ branch }) => ({ opId: runner.start("push", `Push ${branch ?? "current branch"}`, (ctx) => b.push(branch, ctx), { unit: "fragments", cancellable: b.canCancel }) }),
-    "rev:sync": async (o) => ({ opId: runner.start("sync", `Sync ${o.revision ?? "latest"}`, writesTree((ctx) => b.sync(o, ctx)), { unit: "files", cancellable: b.canCancel }) }),
+    "rev:sync": async (o) => ({ opId: runner.start("sync", o.rootFiles?.length ? `Sync ${o.rootFiles.length} file(s) + dependencies` : `Sync ${o.revision ?? "latest"}`, writesTree((ctx) => b.sync(o, ctx)), { unit: "files", cancellable: b.canCancel }) }),
     "rev:history": (o) => b.history(o),
     "file:history": ({ path, length }) => b.fileHistory(path, length),
     "rev:info": ({ revision }) => b.revisionDetail(revision),
@@ -131,19 +135,41 @@ export function createHandlers({ backend: b, runner, bus, info, openExternalDiff
       changed("lock");
       return l;
     },
-    "lock:release": async ({ paths }) => {
-      await b.lockRelease(paths);
+    "lock:release": async ({ paths, owner }) => {
+      const r = await b.lockRelease(paths, { owner });
       changed("lock");
+      return r;
+    },
+    "lock:status": ({ paths }) => b.lockStatus(paths),
+    "deps:list": ({ path, reverse, recursive }) => b.dependencies(path, { reverse, recursive }),
+    "deps:add": async ({ path, dependencies, tags }) => {
+      await b.dependencyAdd(path, dependencies, tags);
+      changed("deps");
       return { ok: true } as const;
     },
+    "deps:remove": async ({ path, dependencies }) => {
+      await b.dependencyRemove(path, dependencies);
+      changed("deps");
+      return { ok: true } as const;
+    },
+    "view:preview": ({ rules }) => b.previewView(rules),
     "lock:query": (q) => b.lockQuery(q),
 
     "auth:info": () => b.authInfo(),
     "auth:login": () => b.authLogin((p) => bus.emit("auth:prompt", p)),
     "auth:logout": () => b.authLogout(),
 
-    "view:get": async () => ({ rules: await b.getView() }),
-    "view:apply": async ({ rules }) => ({ opId: runner.start("view", "Apply view filter", writesTree((ctx) => b.applyView(rules, ctx)), { unit: "files", cancellable: b.canCancel }) }),
+    "view:get": async () => {
+      const stored = await b.getView();
+      const repo = b.currentRepository();
+      const draft = repo ? drafts.get(repo.path) : undefined;
+      return { rules: draft && sameView(draft, stored) ? draft : stored, stored };
+    },
+    "view:apply": async ({ rules }) => {
+      const repo = b.currentRepository();
+      if (repo) drafts.set(repo.path, rules);
+      return { opId: runner.start("view", "Apply view filter", writesTree((ctx) => b.applyView(rules, ctx)), { unit: "files", cancellable: b.canCancel }) };
+    },
 
     "prefs:get": async () => prefs.get(),
     "prefs:set": async (patch) => {
@@ -177,3 +203,9 @@ export function createHandlers({ backend: b, runner, bus, info, openExternalDiff
     "op:cancel": async ({ opId }) => ({ cancelled: runner.cancel(opId) }),
   };
 }
+
+/** Lore stores view rules lowercased, without comments or blank lines. */
+export function normalizeView(rules: readonly string[]): string[] {
+  return rules.map((r) => r.trim()).filter((r) => r && !r.startsWith("#")).map((r) => r.toLowerCase());
+}
+export const sameView = (a: readonly string[], b: readonly string[]) => JSON.stringify(normalizeView(a)) === JSON.stringify(normalizeView(b));

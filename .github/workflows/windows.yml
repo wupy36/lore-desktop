@@ -80,6 +80,8 @@ jobs:
           New-Item -ItemType Directory Source | Out-Null
           Set-Content Source/main.cpp 'int main(){}'
           Set-Content Game.ini 'cfg=1'
+          New-Item -ItemType Directory Content | Out-Null
+          [IO.File]::WriteAllBytes((Join-Path $repo 'Content/Hero.uasset'), [byte[]](1..200000 | ForEach-Object { $_ % 251 }))
           lore --non-interactive stage --scan .
           lore --non-interactive commit "Initial import"
           lore --non-interactive push
@@ -95,6 +97,8 @@ jobs:
           node scripts/smoke-sdk-loop.cjs "--exe=dist/win-unpacked/Lore Desktop.exe" $repo smoke-sdk-loop.png
           # History -> diff, file history, account, branch create/switch, command palette.
           node scripts/smoke-phase3.cjs "--exe=dist/win-unpacked/Lore Desktop.exe" $repo .
+          # Locks, dependencies, workspace view preview/apply/restore.
+          node scripts/smoke-phase4.cjs "--exe=dist/win-unpacked/Lore Desktop.exe" $repo .
 
       - uses: actions/upload-artifact@v6
         with:
@@ -110,5 +114,6 @@ jobs:
           path: |
             smoke-*.png
             phase3-*.png
+            phase4-*.png
             smoke-sdk.json
           if-no-files-found: ignore

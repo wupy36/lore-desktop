@@ -15,10 +15,14 @@ import type {
   BranchAction,
   MaintenanceOp,
   RevisionDetail,
+  DependencyEntry,
   GraphRevision,
+  LockResult,
+  ReleaseResult,
   StatusResult,
+  ViewPreview,
 } from "@shared/types";
-import { generateMockGraph, generateMockRepo, mulberry32, type MockRepoData } from "./mock/fixtures";
+import { generateMockGraph, generateMockRepo, mulberry32, viewMatcher, type MockRepoData } from "./mock/fixtures";
 import {
   CancelledError,
   LoreError,
@@ -406,32 +410,99 @@ export class MockBackend implements LoreBackend {
 
   // ---- locks (advisory in Lore) ----
 
-  async lockAcquire(paths: string[]): Promise<Lock[]> {
+  async lockAcquire(paths: string[]): Promise<LockResult> {
     await this.delay();
     const repo = this.requireRepo();
-    const acquired: Lock[] = [];
+    const owner = this.identityOverride ?? this.opts.identity;
+    const res: LockResult = { acquired: [], alreadyLocked: [] };
     for (const p of paths) {
       const f = this.byPath.get(p);
       if (!f) throw new LoreError(`Path not found in repository: ${p}`);
-      if (f.lockOwner && f.lockOwner !== this.opts.identity) throw new LoreError(`${p} is locked by ${f.lockOwner}`);
-      if (f.lockOwner === this.opts.identity) continue;
-      f.lockOwner = this.opts.identity;
-      const l: Lock = { path: p, owner: this.opts.identity, branch: repo.branch, acquiredAt: Date.now() };
-      this.data.locks.push(l);
-      acquired.push(l);
+      if (f.lockOwner && f.lockOwner !== owner) throw new LoreError(`${p} is locked by ${f.lockOwner}`);
+      if (f.lockOwner === owner) {
+        res.alreadyLocked.push(p);
+        continue;
+      }
+      f.lockOwner = owner;
+      this.data.locks.push({ path: p, owner, branch: repo.branch, acquiredAt: Date.now() });
+      res.acquired.push(p);
     }
-    return clone(acquired);
+    return res;
   }
 
-  async lockRelease(paths: string[]): Promise<void> {
+  async lockRelease(paths: string[], o: { owner?: string } = {}): Promise<ReleaseResult> {
     await this.delay();
-    const set = new Set(paths);
+    const me = this.identityOverride ?? this.opts.identity;
+    const released: string[] = [];
     for (const p of paths) {
       const f = this.byPath.get(p);
-      if (f?.lockOwner && f.lockOwner !== this.opts.identity) throw new LoreError(`${p} is locked by ${f.lockOwner}; release requires --owner`);
-      if (f) f.lockOwner = null;
+      if (!f?.lockOwner) continue;
+      if (f.lockOwner !== me && f.lockOwner !== o.owner) throw new LoreError(`${p} is locked by ${f.lockOwner}; releasing it is an owner action (pass the owner)`);
+      f.lockOwner = null;
+      released.push(p);
     }
-    this.data.locks = this.data.locks.filter((l) => !set.has(l.path));
+    this.data.locks = this.data.locks.filter((l) => !released.includes(l.path));
+    return { released, notFound: released.length === 0 };
+  }
+
+  async lockStatus(paths: string[]): Promise<Lock[]> {
+    await this.delay();
+    return clone(this.data.locks.filter((l) => paths.includes(l.path)));
+  }
+
+  // ---- dependencies ----
+
+  /** Seed graph: first map → first hero asset + first png; hero asset → png. Lazy: needs this.data. */
+  private depsMap: Map<string, Map<string, string[]>> | null = null;
+  private get deps(): Map<string, Map<string, string[]>> {
+    if (this.depsMap) return this.depsMap;
+    const find = (re: RegExp) => this.data.files.find((f) => re.test(f.path))?.path ?? "";
+    const map = find(/\.umap$/);
+    const hero = find(/^Content\/Characters\/Hero\/.*\.uasset$/);
+    const tex = find(/\.png$/);
+    this.depsMap = new Map<string, Map<string, string[]>>([
+      [map, new Map([[hero, ["character"]], [tex, ["texture"]]])],
+      [hero, new Map([[tex, ["texture"]]])],
+    ]);
+    return this.depsMap;
+  }
+
+  async dependencies(path: string, o: { reverse?: boolean; recursive?: boolean }): Promise<DependencyEntry[]> {
+    await this.delay();
+    // Breadth-first so each dependency is reported at its shortest depth.
+    const out: DependencyEntry[] = [];
+    const seen = new Set<string>([path]);
+    let frontier = [path];
+    for (let depth = 0; frontier.length && (depth === 0 || o.recursive); depth++) {
+      const next: string[] = [];
+      for (const p of frontier) {
+        const edges: [string, string[]][] = o.reverse ? [...this.deps].flatMap(([src, m]) => (m.has(p) ? [[src, m.get(p) as string[]] as [string, string[]]] : [])) : [...(this.deps.get(p) ?? new Map<string, string[]>())];
+        for (const [q, tags] of edges) {
+          if (seen.has(q)) continue;
+          seen.add(q);
+          out.push({ path: q, tags, depth });
+          next.push(q);
+        }
+      }
+      frontier = next;
+    }
+    return out;
+  }
+
+  async dependencyAdd(path: string, dependencies: string[], tags: string[] = []): Promise<void> {
+    await this.delay();
+    if (!this.byPath.has(path)) throw new LoreError(`Path not found in repository: ${path}`);
+    const m = this.deps.get(path) ?? new Map<string, string[]>();
+    for (const d of dependencies) {
+      if (d === path) throw new LoreError("A file cannot depend on itself");
+      m.set(d, tags);
+    }
+    this.deps.set(path, m);
+  }
+
+  async dependencyRemove(path: string, dependencies: string[]): Promise<void> {
+    await this.delay();
+    for (const d of dependencies) this.deps.get(path)?.delete(d);
   }
 
   async lockQuery(q: { branch?: string; owner?: string; path?: string }): Promise<Lock[]> {
@@ -477,6 +548,20 @@ export class MockBackend implements LoreBackend {
   async getView(): Promise<string[]> {
     await this.delay();
     return [...this.data.view];
+  }
+
+  async previewView(rules: string[]): Promise<ViewPreview> {
+    await this.delay();
+    const before = viewMatcher(this.data.view);
+    const after = viewMatcher(rules);
+    const out: ViewPreview = { materialize: [], remove: [] };
+    for (const f of this.data.files) {
+      const was = before(f.path);
+      const now = after(f.path);
+      if (was && !now) out.remove.push({ path: f.path, size: f.size });
+      else if (!was && now) out.materialize.push({ path: f.path, size: f.size });
+    }
+    return out;
   }
 
   async applyView(rules: string[], ctx: OpContext): Promise<void> {

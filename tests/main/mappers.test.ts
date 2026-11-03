@@ -77,3 +77,27 @@ describe("revision metadata", () => {
     expect(revisionFromMeta({ number: 1, hash: "h", parents: [] }, {}, new Map()).author).toBeNull();
   });
 });
+
+import { viewMatcher } from "../../src/main/lore/mock/fixtures";
+describe("mock view matcher (calibrated against Lore dry-run sync)", () => {
+  const files = ["Content/Hero.uasset", "Game.ini", "Source/main.cpp", "smoke.txt"];
+  const removed = (rules: string[]) => files.filter((f) => !viewMatcher(rules)(f));
+  // Each expectation below is what loreserver 0.12 reported for the same rules.
+  it.each([
+    [["*", "!Source/"], ["Content/Hero.uasset", "Game.ini", "Source/main.cpp", "smoke.txt"]],
+    [["*", "!Source/**"], ["Content/Hero.uasset", "Game.ini", "smoke.txt"]],
+    [["*", "!Source"], ["Content/Hero.uasset", "Game.ini", "Source/main.cpp", "smoke.txt"]],
+    [["*", "!/Source/main.cpp"], ["Content/Hero.uasset", "Game.ini", "smoke.txt"]],
+    [["*", "!Source/main.cpp"], ["Content/Hero.uasset", "Game.ini", "smoke.txt"]],
+    [["Source/"], ["Source/main.cpp"]],
+    [["Source"], ["Source/main.cpp"]],
+    [["Hero.uasset"], ["Content/Hero.uasset"]],
+    [["*.uasset"], ["Content/Hero.uasset"]],
+    [["Content/**"], ["Content/Hero.uasset"]],
+    [["*", "!*.txt"], ["Content/Hero.uasset", "Game.ini", "Source/main.cpp"]],
+    [["/Game.ini"], ["Game.ini"]],
+    [["*", "!Content/", "!Content/**", "Content/Hero.uasset"], ["Content/Hero.uasset", "Game.ini", "Source/main.cpp", "smoke.txt"]],
+    [["# just a comment"], []],
+    [["*", "!SOURCE/**"], ["Content/Hero.uasset", "Game.ini", "smoke.txt"]],
+  ])("%j removes %j", (rules, want) => expect(removed(rules)).toEqual(want));
+});
