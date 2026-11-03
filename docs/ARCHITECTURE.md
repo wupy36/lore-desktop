@@ -135,14 +135,20 @@ Electron main output (online):
 
 **Demo server.** The README install script (`install.sh --demo`) downloads from GitHub Releases, which this container's proxy blocks (HTTP 403). Substitute: built `loreserver` and `lore` (0.12.1-nightly) from source with `cargo build --release -p lore-server -p lore-client` and started `loreserver` with no config — the same thing `--demo` does (single node, self-signed cert, temp store; QUIC/gRPC on 41337, HTTP health on 41339).
 
-**Windows: verified only by CI, see `.github/workflows/windows.yml`.** No interactive Windows host was available. The `windows` workflow on `windows-latest` does the following:
+**Windows: VERIFIED on CI** (`.github/workflows/windows.yml`, `windows-latest`, [run 3](https://github.com/wupy36/lore-desktop/actions/runs/41689263711), commit `77839df`). Lore CLI and `loreserver` 0.12.0 were installed with `install.ps1`.
 
-- installs the Lore CLI and server with `install.ps1`;
-- runs both spikes under Electron;
-- builds the installer;
-- smoke-tests the **packaged** `Lore Desktop.exe`, in mock mode and on a real repository (SDK backend).
+| Check | Result |
+| --- | --- |
+| `pnpm typecheck / lint / test` | pass (50 tests) |
+| `spike/sdk-spike.mjs` in Electron main (`platform: 'win32', arch: 'x64'`) | **PASS**: `repositoryStatus rc 0`, both files reported dirty |
+| `spike/sdk-spike-online.mjs` against the local server | **PASS** |
+| `pnpm dist:win:native`: NSIS installer and portable exe | built (`LoreDesktop-0.1.0-setup-x64.exe`, `-portable-x64.exe`) |
+| Packaged `Lore Desktop.exe --mock` | pass: 12,012 rows / 51 in DOM, context-menu Stage, no errors |
+| Packaged `Lore Desktop.exe --repo=<CLI-created repo>` (SDK backend) | pass: `DesktopDemo · main@1`, `Source/main.cpp` staged, `Source/new.h` untracked |
 
-Check that workflow's latest run for the current status. Manual steps are in [BUILD-WINDOWS.md](BUILD-WINDOWS.md).
+CI findings: GitHub's Windows runner kills processes a step started when that step ends, so `scripts/ci/start-loreserver.ps1` starts the server inside each step that needs it. electron-builder auto-publishes on CI unless told not to (`--publish never`, `publish: null`).
+
+Not verified on Windows: running the NSIS installer interactively (install, shortcuts, uninstall) and the folder-picker dialog. Those need a desktop session. Manual steps are in [BUILD-WINDOWS.md](BUILD-WINDOWS.md).
 
 **Packaged-app check on Linux.** `pnpm dist:dir`, then `scripts/smoke-mock.cjs --exe=dist/linux-unpacked/lore-desktop` and `scripts/smoke-sdk.cjs --exe=…`, both pass. This shows the SDK loads its native library from `app.asar.unpacked`. A cross-built `dist/win-unpacked` contains `lorelib-amd64-unknown-windows.dll` and koffi `win32_x64` only.
 
@@ -157,7 +163,7 @@ Verified:
 - `scripts/smoke-mock.cjs` on the built app under Xvfb: 12,012-row table with ~50 DOM rows (virtualized), context-menu Stage, Enter → inline diff, Ctrl+Shift+S → transfer queue, console log populated, no renderer errors.
 
 Untested / not built yet:
-- Windows and macOS (Linux only so far).
+- macOS (Linux verified locally, Windows verified on CI; see §6).
 - SdkBackend beyond open/status (stage, commit, push, sync, … are stubs that throw "Phase N").
 - CliBackend beyond process plumbing.
 - Logs emitted before the renderer subscribes (e.g. the startup `openRepository`) are not buffered.
