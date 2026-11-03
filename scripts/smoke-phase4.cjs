@@ -74,7 +74,8 @@ const launch = (args) => (exeArg ? { executablePath: exeArg, args } : { executab
     await win.click("button:has-text('Edit view…')");
     await win.click("role=button[name='Everything']");
     await win.click("role=button[name='Preview']");
-    await win.waitForSelector("text=/\\+2 file\\(s\\)/", { timeout: 10000 }); // Hero.uasset + Game.ini
+    // Restoring brings back everything the sparse view removed (count depends on the repo).
+    await win.waitForSelector("[aria-label='View preview'] .state-added:has-text('Content/Hero.uasset')", { timeout: 10000 });
     await win.click("role=button[name='Apply']");
     await poll(() => fs.existsSync(path.join(repo, "Content", "Hero.uasset")), "Hero.uasset restored", 20000);
   });
