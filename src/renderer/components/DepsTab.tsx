@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useActions } from "../actions";
 import { useDependencies, useFiles } from "../api/queries";
 import { useUi } from "../store/ui";
@@ -8,12 +8,25 @@ export function DepsTab({ path }: { path: string }) {
   const [recursive, setRecursive] = useState(false);
   const deps = useDependencies(path, { recursive });
   const usedBy = useDependencies(path, { reverse: true });
-  const files = useFiles().data ?? [];
+  const filesData = useFiles().data;
+  const files = useMemo(() => filesData ?? [], [filesData]);
   const a = useActions();
   const [target, setTarget] = useState("");
   const [tags, setTags] = useState("");
   const open = (p: string) => useUi.getState().openDetail(p, "deps");
   const known = files.some((f) => f.path === target.trim());
+  // Suggest from what's typed (≤30) instead of rendering every path as an <option>:
+  // thousands of options cost a full DOM rebuild on every render of this tab.
+  const suggestions = useMemo(() => {
+    const q = target.trim().toLowerCase();
+    if (q.length < 2) return [];
+    const out: string[] = [];
+    for (const f of files) {
+      if (f.path.toLowerCase().includes(q) && f.path !== path) out.push(f.path);
+      if (out.length >= 30) break;
+    }
+    return out;
+  }, [target, files, path]);
 
   return (
     <div className="pane-body">
@@ -57,8 +70,8 @@ export function DepsTab({ path }: { path: string }) {
           Add
         </button>
         <datalist id="dep-targets">
-          {files.slice(0, 5000).map((f) => (
-            <option key={f.path} value={f.path} />
+          {suggestions.map((p) => (
+            <option key={p} value={p} />
           ))}
         </datalist>
       </form>

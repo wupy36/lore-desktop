@@ -10,5 +10,8 @@ export default defineConfig({
     exclude: ["tests/integration/**", "node_modules/**"],
     environmentMatchGlobs: [["tests/renderer/**", "jsdom"]],
     environment: "node",
+    // CI runners (Windows especially) are several times slower than a dev box.
+    testTimeout: 15000,
+    setupFiles: ["tests/setup.ts"],
   },
 });
