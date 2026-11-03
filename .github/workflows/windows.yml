@@ -47,18 +47,11 @@ jobs:
           $env:LORE_SERVER = 1
           irm https://raw.githubusercontent.com/EpicGames/lore/main/scripts/install.ps1 | iex
           "$env:LORE_INSTALL_DIR" | Out-File -FilePath $env:GITHUB_PATH -Append
-          # Same as install.ps1 -Demo, but without blocking the job.
-          $log = Join-Path $env:RUNNER_TEMP 'loreserver.log'
-          Start-Process -FilePath (Join-Path $env:LORE_INSTALL_DIR 'loreserver.exe') -WindowStyle Hidden -RedirectStandardOutput $log -RedirectStandardError "$log.err"
-          for ($i = 0; $i -lt 40; $i++) {
-            try { Invoke-WebRequest -Uri http://127.0.0.1:41339/health_check -UseBasicParsing -TimeoutSec 2 | Out-Null; Write-Host "loreserver healthy"; exit 0 } catch { Start-Sleep -Milliseconds 500 }
-          }
-          Get-Content -Tail 40 $log, "$log.err"
-          exit 1
 
       - name: Phase 0 spike (SDK in Electron main on Windows)
         working-directory: spike
         run: |
+          ../scripts/ci/start-loreserver.ps1
           npm ci --no-audit --no-fund
           npx electron sdk-spike.mjs
           npx electron sdk-spike-online.mjs lore://127.0.0.1:41337
@@ -72,6 +65,7 @@ jobs:
       - name: Smoke-test packaged app (SDK, real repository)
         shell: pwsh
         run: |
+          ./scripts/ci/start-loreserver.ps1
           $repo = Join-Path $env:RUNNER_TEMP 'DesktopDemo'
           New-Item -ItemType Directory -Force $repo | Out-Null
           Push-Location $repo
